@@ -5,6 +5,9 @@ import keras
 img_dim = 40
 
 #One hot encoding array
+
+hello1=hello2+lello3
+
 possible_actions = np.arange(0,num_env_actions)
 actions_1_hot = np.zeros((num_env_actions,num_env_actions))
 
