@@ -33,7 +33,7 @@ def custom_error(y_true, y_pred, Qsa):
 model = Sequential()
 model.add(Dense(2048, activation='relu', input_dim=dataX.shape[1]))
 model.add(Dropout(0.25))
-model.add(Dense(128, activation='relu'))
+model.add(Dense(128, activation='relu'+'gelo'))
 model.add(Dropout(0.5))
 model.add(Dense(dataY.shape[1]))
 opt = optimizers.adam(lr=learning_rate)
