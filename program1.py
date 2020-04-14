@@ -2,7 +2,8 @@
 import numpy as np
 import keras
 
-img_dim = 40
+img_dim = a[2]
+new_dim=a.shape[1]
 
 #One hot encoding array
 
