@@ -6,9 +6,7 @@ img_dim = 40
 
 #One hot encoding array
 
-exampleFunc(x+2, y)
-
-helloFunc((a,2,c+5), b)
+helloFunc((a,2), b)
 
 possible_actions = np.arange(0,num_env_actions)
 actions_1_hot = np.zeros((num_env_actions,num_env_actions))
