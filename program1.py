@@ -33,6 +33,9 @@ def custom_error(y_true, y_pred, Qsa):
 
 #nitialize the Reward predictor model
 model = Sequential()
+
+model.add(Dense(2048, activation='relu', input_dim=(10,2)))
+
 model.add(Dense(2048, activation='relu', input_dim=dataX.shape[1]))
 model.add(Dropout(0.25))
 model.add(Dense(128, activation='relu'+'gelo'))
