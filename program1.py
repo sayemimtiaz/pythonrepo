@@ -2,6 +2,7 @@
 import numpy as np
 import keras
 
+print("hello world", 1, 2)
 img_dim = a[2]
 new_dim=a.shape[1]
 
