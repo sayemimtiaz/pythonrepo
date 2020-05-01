@@ -2,6 +2,9 @@
 import numpy as np
 import keras
 
+a=b[1:2]
+a=b[[2,3]]
+
 print("hello world", 1, 2)
 img_dim = a[2]
 new_dim=a.shape[1]
@@ -9,6 +12,7 @@ new_dim=a.shape[1]
 #One hot encoding array
 
 helloFunc((a,2), b)
+
 
 possible_actions = np.arange(0,num_env_actions)
 actions_1_hot = np.zeros((num_env_actions,num_env_actions))
