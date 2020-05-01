@@ -2,6 +2,8 @@
 import numpy as np
 import keras
 
+a=b[:-1]
+a=b[:]
 temp[temp != 1] = 0
 a=b[1:2]
 a=b[[2,3]]
