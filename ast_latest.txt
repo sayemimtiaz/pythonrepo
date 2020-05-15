@@ -1,0 +1,1088 @@
+nodePrint[] = {
+   "name": "program1.py",
+   "statements": [
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "a"
+                  },
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "b"
+                        },
+                        {
+                           "kind": "ARRAYINDEX",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "1"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "a"
+                  },
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "b"
+                        },
+                        {
+                           "kind": "ARRAYINDEX"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "temp"
+                        },
+                        {
+                           "kind": "ARRAYINDEX",
+                           "expressions": [
+                              {
+                                 "kind": "NEQ",
+                                 "expressions": [
+                                    {
+                                       "kind": "VARACCESS",
+                                       "variable": "temp"
+                                    },
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "1"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  },
+                  {
+                     "kind": "LITERAL",
+                     "literal": "0"
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "a"
+                  },
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "b"
+                        },
+                        {
+                           "kind": "ARRAYINDEX",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "1"
+                              },
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "2"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "a"
+                  },
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "b"
+                        },
+                        {
+                           "kind": "ARRAYINDEX",
+                           "expressions": [
+                              {
+                                 "kind": "NEWARRAY",
+                                 "expressions": [
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "2"
+                                    },
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "3"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "method": "print",
+               "method_args": [
+                  {
+                     "kind": "TUPLE",
+                     "expressions": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "\"hello world\""
+                        },
+                        {
+                           "kind": "LITERAL",
+                           "literal": "1"
+                        },
+                        {
+                           "kind": "LITERAL",
+                           "literal": "2"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "img_dim"
+                  },
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "a"
+                        },
+                        {
+                           "kind": "ARRAYINDEX",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "2"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "new_dim"
+                  },
+                  {
+                     "kind": "ARRAYACCESS",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "a"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "shape"
+                        },
+                        {
+                           "kind": "ARRAYINDEX",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "1"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "method": "helloFunc",
+               "method_args": [
+                  {
+                     "kind": "TUPLE",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "a"
+                        },
+                        {
+                           "kind": "LITERAL",
+                           "literal": "2"
+                        }
+                     ]
+                  },
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "b"
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "possible_actions"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "np"
+                        }
+                     ],
+                     "method": "arange",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "0"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "num_env_actions"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "actions_1_hot"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "np"
+                        }
+                     ],
+                     "method": "zeros",
+                     "method_args": [
+                        {
+                           "kind": "TUPLE",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "num_env_actions"
+                              },
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "num_env_actions"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "env"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "gym"
+                        }
+                     ],
+                     "method": "make",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "'Pong-v0'"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "env"
+                  }
+               ],
+               "method": "reset"
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "dataX"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "np"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "random"
+                        }
+                     ],
+                     "method": "random",
+                     "method_args": [
+                        {
+                           "kind": "TUPLE",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "5"
+                              },
+                              {
+                                 "kind": "OP_ADD",
+                                 "expressions": [
+                                    {
+                                       "kind": "VARACCESS",
+                                       "variable": "num_env_variables"
+                                    },
+                                    {
+                                       "kind": "VARACCESS",
+                                       "variable": "num_env_actions"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "dataY"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "np"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "random"
+                        }
+                     ],
+                     "method": "random",
+                     "method_args": [
+                        {
+                           "kind": "TUPLE",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "5"
+                              },
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "1"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "apdataX"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "np"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "random"
+                        }
+                     ],
+                     "method": "random",
+                     "method_args": [
+                        {
+                           "kind": "TUPLE",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "5"
+                              },
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "num_env_variables"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "apdataY"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "np"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "random"
+                        }
+                     ],
+                     "method": "random",
+                     "method_args": [
+                        {
+                           "kind": "TUPLE",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "5"
+                              },
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "num_env_actions"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Sequential"
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "add",
+               "method_args": [
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Dense",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "2048"
+                        },
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "activation"
+                              },
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "'relu'"
+                              }
+                           ]
+                        },
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "input_dim"
+                              },
+                              {
+                                 "kind": "TUPLE",
+                                 "expressions": [
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "10"
+                                    },
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "2"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "add",
+               "method_args": [
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Dense",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "2048"
+                        },
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "activation"
+                              },
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "'relu'"
+                              }
+                           ]
+                        },
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "input_dim"
+                              },
+                              {
+                                 "kind": "ARRAYACCESS",
+                                 "expressions": [
+                                    {
+                                       "kind": "VARACCESS",
+                                       "variable": "dataX"
+                                    },
+                                    {
+                                       "kind": "VARACCESS",
+                                       "variable": "shape"
+                                    },
+                                    {
+                                       "kind": "ARRAYINDEX",
+                                       "expressions": [
+                                          {
+                                             "kind": "LITERAL",
+                                             "literal": "1"
+                                          }
+                                       ]
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "add",
+               "method_args": [
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Dropout",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "0.25"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "add",
+               "method_args": [
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Dense",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "128"
+                        },
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "activation"
+                              },
+                              {
+                                 "kind": "OP_ADD",
+                                 "expressions": [
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "'relu'"
+                                    },
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "'gelo'"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "add",
+               "method_args": [
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Dropout",
+                     "method_args": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "0.5"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "add",
+               "method_args": [
+                  {
+                     "kind": "METHODCALL",
+                     "method": "Dense",
+                     "method_args": [
+                        {
+                           "kind": "ARRAYACCESS",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "dataY"
+                              },
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "shape"
+                              },
+                              {
+                                 "kind": "ARRAYINDEX",
+                                 "expressions": [
+                                    {
+                                       "kind": "LITERAL",
+                                       "literal": "1"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "ASSIGN",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "opt"
+                  },
+                  {
+                     "kind": "METHODCALL",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "optimizers"
+                        }
+                     ],
+                     "method": "adam",
+                     "method_args": [
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "lr"
+                              },
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "learning_rate"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "kind": "EXPRESSION",
+         "expressions": [
+            {
+               "kind": "METHODCALL",
+               "expressions": [
+                  {
+                     "kind": "VARACCESS",
+                     "variable": "model"
+                  }
+               ],
+               "method": "compile",
+               "method_args": [
+                  {
+                     "kind": "ASSIGN",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "loss"
+                        },
+                        {
+                           "kind": "LITERAL",
+                           "literal": "'mse'"
+                        }
+                     ]
+                  },
+                  {
+                     "kind": "ASSIGN",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "optimizer"
+                        },
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "opt"
+                        }
+                     ]
+                  },
+                  {
+                     "kind": "ASSIGN",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "metrics"
+                        },
+                        {
+                           "kind": "NEWARRAY",
+                           "expressions": [
+                              {
+                                 "kind": "LITERAL",
+                                 "literal": "'accuracy'"
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      }
+   ],
+   "methods": [
+      {
+         "name": "custom_error",
+         "return_type": {
+            "name": "",
+            "kind": "OTHER"
+         },
+         "arguments": [
+            {
+               "name": "y_true"
+            },
+            {
+               "name": "y_pred"
+            },
+            {
+               "name": "Qsa"
+            }
+         ],
+         "statements": [
+            {
+               "kind": "BLOCK",
+               "statements": [
+                  {
+                     "kind": "EXPRESSION",
+                     "expressions": [
+                        {
+                           "kind": "ASSIGN",
+                           "expressions": [
+                              {
+                                 "kind": "VARACCESS",
+                                 "variable": "cce"
+                              },
+                              {
+                                 "kind": "OP_MULT",
+                                 "expressions": [
+                                    {
+                                       "kind": "OP_MULT",
+                                       "expressions": [
+                                          {
+                                             "kind": "LITERAL",
+                                             "literal": "0.001"
+                                          },
+                                          {
+                                             "kind": "OP_SUB",
+                                             "expressions": [
+                                                {
+                                                   "kind": "VARACCESS",
+                                                   "variable": "y_true"
+                                                },
+                                                {
+                                                   "kind": "VARACCESS",
+                                                   "variable": "y_pred"
+                                                }
+                                             ]
+                                          }
+                                       ]
+                                    },
+                                    {
+                                       "kind": "VARACCESS",
+                                       "variable": "Qsa"
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  },
+                  {
+                     "kind": "RETURN",
+                     "expressions": [
+                        {
+                           "kind": "VARACCESS",
+                           "variable": "cce"
+                        }
+                     ]
+                  }
+               ]
+            }
+         ]
+      }
+   ],
+   "imports": [
+      "numpy as np"
+   ]
+}
+
