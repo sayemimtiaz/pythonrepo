@@ -2,6 +2,12 @@
 import numpy as np
 import keras
 
+class MyClass:
+	"This is my second class"
+	a = 10
+	def func(self):
+		print('Hello')
+		
 a=b[:-1]
 a=b[:]
 temp[temp != 1] = 0
