@@ -8,11 +8,6 @@ class MyClass:
 	def func(self):
 		print('Hello')
 
-	class Inner:
-        """Inner Class"""
-
-        def inner_display(self, msg):
-            print(msg)
 
 a=b[:-1]
 a=b[:]
