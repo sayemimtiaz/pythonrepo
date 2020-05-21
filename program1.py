@@ -14,9 +14,9 @@ try:
 
 		    def inner_display(self, msg):
 		        print(msg)
-catch:
+except:
 	print("Found error")
-	
+
 a=b[:-1]
 a=b[:]
 temp[temp != 1] = 0
