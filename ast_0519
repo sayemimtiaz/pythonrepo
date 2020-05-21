@@ -1,4 +1,5 @@
-nodePrint[] = {
+nodePrint[] = 
+{
    "name": "program1.py",
    "declarations": [
       {
@@ -34,6 +35,62 @@ nodePrint[] = {
                                  ]
                               }
                            ]
+                        }
+                     ]
+                  }
+               ]
+            }
+         ],
+         "nested_declarations": [
+            {
+               "name": "Inner",
+               "kind": "CLASS",
+               "methods": [
+                  {
+                     "name": "inner_display",
+                     "return_type": {
+                        "name": "",
+                        "kind": "OTHER"
+                     },
+                     "arguments": [
+                        {
+                           "name": "self"
+                        },
+                        {
+                           "name": "msg"
+                        }
+                     ],
+                     "statements": [
+                        {
+                           "kind": "BLOCK",
+                           "statements": [
+                              {
+                                 "kind": "EXPRESSION",
+                                 "expressions": [
+                                    {
+                                       "kind": "METHODCALL",
+                                       "method": "print",
+                                       "method_args": [
+                                          {
+                                             "kind": "VARACCESS",
+                                             "variable": "msg"
+                                          }
+                                       ]
+                                    }
+                                 ]
+                              }
+                           ]
+                        }
+                     ]
+                  }
+               ],
+               "statements": [
+                  {
+                     "kind": "EXPRESSION",
+                     "expressions": [
+                        {
+                           "kind": "LITERAL",
+                           "literal": "\"\"\"Inner Class\"\"\""
                         }
                      ]
                   }
@@ -1156,4 +1213,3 @@ nodePrint[] = {
       "numpy as np"
    ]
 }
-
