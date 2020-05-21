@@ -14,7 +14,7 @@ try:
 
 		    def inner_display(self, msg):
 		        print(msg)
-except:
+except NameError:
 	print("Found error")
 
 a=b[:-1]
