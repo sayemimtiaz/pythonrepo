@@ -2,6 +2,12 @@
 import numpy as np
 import keras
 
+thisdict = {
+  "brand": "Ford",
+  "model": "Mustang",
+  "year": 1964
+}
+
 try:
 	class MyClass:
 		"This is my second class"
