@@ -76,3 +76,8 @@ num = [2, 3]
 
 for i in num:
 	print(i)
+
+i = 1
+while i < 6:
+  print(i)
+  i += 1
