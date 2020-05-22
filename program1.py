@@ -65,3 +65,8 @@ model.add(Dropout(0.5))
 model.add(Dense(dataY.shape[1]))
 opt = optimizers.adam(lr=learning_rate)
 model.compile(loss='mse', optimizer=opt, metrics=['accuracy'])
+
+num = [2, 3]
+
+for i in num:
+	print(i)
