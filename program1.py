@@ -76,10 +76,12 @@ num = [2, 3]
 
 for i in num:
     print(i)
-
+else:
+    print("This an else statement inside FOR.")
+    
 i = 1
 while i < 6:
     print(i)
-    i += 1
+    i = i + 1
 else:
-    print("i is no longer less than 6")
+    print("This an else statement inside WHILE.")
