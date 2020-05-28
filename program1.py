@@ -72,8 +72,7 @@ model.add(Dense(dataY.shape[1]))
 opt = optimizers.adam(lr=learning_rate)
 model.compile(loss='mse', optimizer=opt, metrics=['accuracy'])
 
-num = [2, 3]
-
+num = [5, 6]
 for i in num:
     print(i)
 else:
@@ -82,6 +81,21 @@ else:
 i = 1
 while i < 6:
     print(i)
+    continue
     i = i + 1
+    break
 else:
     print("This an else statement inside WHILE.")
+
+if i < 6:
+    print("Inside IF")
+elif i < 10:
+    print("Inside ELIF")
+else:
+    print("Inside else of IF.")
+    
+x = -1
+if x < 0:
+  raise Exception("Sorry, no numbers below zero")
+
+del x
