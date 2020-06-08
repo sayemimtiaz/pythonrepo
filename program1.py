@@ -1,6 +1,3 @@
-def myfunc(n):
-  return lambda a : a * n
-
-mydoubler = myfunc(2)
-
-print(mydoubler(11))
+li = [5, 7] 
+final_list = list(filter(lambda x: (x%2 != 0) , li)) 
+print(final_list)
