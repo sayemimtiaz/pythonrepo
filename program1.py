@@ -3,4 +3,6 @@ try:
 except NameError:
     print("Found error")
 else:
-    print("Else block")
+	print("else block")
+finally:
+	print("Finally block")
