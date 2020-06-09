@@ -1,3 +1,6 @@
-li = [5, 7] 
-final_list = list(filter(lambda x: (x%2 != 0) , li)) 
-print(final_list)
+try:
+    print("Inside try")
+except NameError:
+    print("Found error")
+else:
+    print("Else block")
