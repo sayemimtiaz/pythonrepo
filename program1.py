@@ -1,8 +1,3 @@
-x+=1
-+x
---x
-+(x-2)
-x-=1
-x*=1
-x/=1
-x++
+numbers = [2, 3, 5, 7]
+for num in numbers:
+  print(prime)
