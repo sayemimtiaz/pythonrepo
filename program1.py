@@ -3,4 +3,5 @@
 def secret():
     pass
 
-exec("dfhdfh")
+exec("dfhdfh", {})
+exec("dhhgh", g, l)
