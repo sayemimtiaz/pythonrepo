@@ -1,2 +1,4 @@
-if not type(x) is int:
-  pass
+@app.route("/secret", methods=["POST"])
+@login_required(int,int)
+def secret():
+    pass
