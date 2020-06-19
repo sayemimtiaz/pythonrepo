@@ -2,3 +2,5 @@
 @login_required(int,int)
 def secret():
     pass
+
+exec("dfhdfh")
