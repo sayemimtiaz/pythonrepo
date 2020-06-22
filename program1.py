@@ -1,5 +1,7 @@
-x>>=5
-x<<=5
-x **= 5
-x//=5
-~x
+x=1
+y=2
+def f():
+  global x,y
+  print(x)
+
+f()
