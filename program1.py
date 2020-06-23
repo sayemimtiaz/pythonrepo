@@ -3,5 +3,6 @@ y=2
 def f():
   global x,y
   print(x,y,z)
+  hello(a)
 
 f()
