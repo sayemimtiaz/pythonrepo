@@ -1,2 +1,1 @@
-class Antirectifier(layers.Layer):
-  pass
+lines = f.read().split('\n')
