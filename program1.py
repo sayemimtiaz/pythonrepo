@@ -1,705 +1,1215 @@
-# --------------------------------------------------------
-# Fast R-CNN
-# Copyright (c) 2015 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Ross Girshick
-# --------------------------------------------------------
+"""Tests for input validation functions"""
 
-import xml.dom.minidom as minidom
-
+import warnings
 import os
-import PIL
+
+from tempfile import NamedTemporaryFile
+from itertools import product
+from operator import itemgetter
+
+import pytest
+from pytest import importorskip
 import numpy as np
-import scipy.sparse
-import subprocess
-import pickle
-import math
-import glob
-import scipy.io as sio
+import scipy.sparse as sp
 
-from .imdb import imdb
-from .imdb import ROOT_DIR
+from sklearn.utils._testing import assert_no_warnings
+from sklearn.utils._testing import ignore_warnings
+from sklearn.utils._testing import SkipTest
+from sklearn.utils._testing import assert_array_equal
+from sklearn.utils._testing import assert_allclose_dense_sparse
+from sklearn.utils._testing import assert_allclose
+from sklearn.utils import as_float_array, check_array, check_symmetric
+from sklearn.utils import check_X_y
+from sklearn.utils import deprecated
+from sklearn.utils._mocking import MockDataFrame
+from sklearn.utils.estimator_checks import _NotAnArray
+from sklearn.random_projection import _sparse_random_matrix
+from sklearn.linear_model import ARDRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR
+from sklearn.datasets import make_blobs
+from sklearn.utils import _safe_indexing
+from sklearn.utils.validation import (
+    has_fit_parameter,
+    check_is_fitted,
+    check_consistent_length,
+    assert_all_finite,
+    check_memory,
+    check_non_negative,
+    _num_samples,
+    check_scalar,
+    _check_psd_eigenvalues,
+    _deprecate_positional_args,
+    _check_sample_weight,
+    _allclose_dense_sparse,
+    FLOAT_DTYPES)
+from sklearn.utils.validation import _check_fit_params
 
-from ..utils.cython_bbox import bbox_overlaps
-from ..utils.boxes_grid import get_boxes_grid
+import sklearn
 
-# TODO: make fast_rcnn irrelevant
-# >>>> obsolete, because it depends on sth outside of this project
-from ..fast_rcnn.config import cfg
-from ..rpn_msr.generate_anchors import generate_anchors
-# <<<< obsolete
+from sklearn.exceptions import NotFittedError, PositiveSpectrumWarning
 
-class pascal3d(imdb):
-    def __init__(self, image_set, pascal3d_path = None):
-        imdb.__init__(self, 'pascal3d_' + image_set)
-        self._year = '2012'
-        self._image_set = image_set
-        self._pascal3d_path = self._get_default_path() if pascal3d_path is None \
-                            else pascal3d_path
-        self._data_path = os.path.join(self._pascal3d_path, 'VOCdevkit' + self._year, 'VOC' + self._year)
-        self._classes = ('__background__', # always index 0
-                         'aeroplane', 'bicycle', 'boat',
-                         'bottle', 'bus', 'car', 'chair',
-                         'diningtable', 'motorbike',
-                         'sofa', 'train', 'tvmonitor')
-        self._class_to_ind = dict(list(zip(self.classes, list(range(self.num_classes)))))
-        self._image_ext = '.jpg'
-        self._image_index = self._load_image_set_index()
-        # Default to roidb handler
-        if cfg.IS_RPN:
-            self._roidb_handler = self.gt_roidb
+from sklearn.utils._testing import TempMemmap
+
+
+def test_as_float_array():
+    # Test function for as_float_array
+    X = np.ones((3, 10), dtype=np.int32)
+    X = X + np.arange(10, dtype=np.int32)
+    X2 = as_float_array(X, copy=False)
+    assert X2.dtype == np.float32
+    # Another test
+    X = X.astype(np.int64)
+    X2 = as_float_array(X, copy=True)
+    # Checking that the array wasn't overwritten
+    assert as_float_array(X, copy=False) is not X
+    assert X2.dtype == np.float64
+    # Test int dtypes <= 32bit
+    tested_dtypes = [bool,
+                     np.int8, np.int16, np.int32,
+                     np.uint8, np.uint16, np.uint32]
+    for dtype in tested_dtypes:
+        X = X.astype(dtype)
+        X2 = as_float_array(X)
+        assert X2.dtype == np.float32
+
+    # Test object dtype
+    X = X.astype(object)
+    X2 = as_float_array(X, copy=True)
+    assert X2.dtype == np.float64
+
+    # Here, X is of the right type, it shouldn't be modified
+    X = np.ones((3, 2), dtype=np.float32)
+    assert as_float_array(X, copy=False) is X
+    # Test that if X is fortran ordered it stays
+    X = np.asfortranarray(X)
+    assert np.isfortran(as_float_array(X, copy=True))
+
+    # Test the copy parameter with some matrices
+    matrices = [
+        np.matrix(np.arange(5)),
+        sp.csc_matrix(np.arange(5)).toarray(),
+        _sparse_random_matrix(10, 10, density=0.10).toarray()
+    ]
+    for M in matrices:
+        N = as_float_array(M, copy=True)
+        N[0, 0] = np.nan
+        assert not np.isnan(M).any()
+
+
+@pytest.mark.parametrize(
+    "X",
+    [(np.random.random((10, 2))),
+     (sp.rand(10, 2).tocsr())])
+def test_as_float_array_nan(X):
+    X[5, 0] = np.nan
+    X[6, 1] = np.nan
+    X_converted = as_float_array(X, force_all_finite='allow-nan')
+    assert_allclose_dense_sparse(X_converted, X)
+
+
+def test_np_matrix():
+    # Confirm that input validation code does not return np.matrix
+    X = np.arange(12).reshape(3, 4)
+
+    assert not isinstance(as_float_array(X), np.matrix)
+    assert not isinstance(as_float_array(np.matrix(X)), np.matrix)
+    assert not isinstance(as_float_array(sp.csc_matrix(X)), np.matrix)
+
+
+def test_memmap():
+    # Confirm that input validation code doesn't copy memory mapped arrays
+
+    asflt = lambda x: as_float_array(x, copy=False)
+
+    with NamedTemporaryFile(prefix='sklearn-test') as tmp:
+        M = np.memmap(tmp, shape=(10, 10), dtype=np.float32)
+        M[:] = 0
+
+        for f in (check_array, np.asarray, asflt):
+            X = f(M)
+            X[:] = 1
+            assert_array_equal(X.ravel(), M.ravel())
+            X[:] = 0
+
+
+def test_ordering():
+    # Check that ordering is enforced correctly by validation utilities.
+    # We need to check each validation utility, because a 'copy' without
+    # 'order=K' will kill the ordering.
+    X = np.ones((10, 5))
+    for A in X, X.T:
+        for copy in (True, False):
+            B = check_array(A, order='C', copy=copy)
+            assert B.flags['C_CONTIGUOUS']
+            B = check_array(A, order='F', copy=copy)
+            assert B.flags['F_CONTIGUOUS']
+            if copy:
+                assert A is not B
+
+    X = sp.csr_matrix(X)
+    X.data = X.data[::-1]
+    assert not X.data.flags['C_CONTIGUOUS']
+
+
+@pytest.mark.parametrize(
+    "value, force_all_finite",
+    [(np.inf, False), (np.nan, 'allow-nan'), (np.nan, False)]
+)
+@pytest.mark.parametrize(
+    "retype",
+    [np.asarray, sp.csr_matrix]
+)
+def test_check_array_force_all_finite_valid(value, force_all_finite, retype):
+    X = retype(np.arange(4).reshape(2, 2).astype(float))
+    X[0, 0] = value
+    X_checked = check_array(X, force_all_finite=force_all_finite,
+                            accept_sparse=True)
+    assert_allclose_dense_sparse(X, X_checked)
+
+
+@pytest.mark.parametrize(
+    "value, force_all_finite, match_msg",
+    [(np.inf, True, 'Input contains NaN, infinity'),
+     (np.inf, 'allow-nan', 'Input contains infinity'),
+     (np.nan, True, 'Input contains NaN, infinity'),
+     (np.nan, 'allow-inf', 'force_all_finite should be a bool or "allow-nan"'),
+     (np.nan, 1, 'Input contains NaN, infinity')]
+)
+@pytest.mark.parametrize(
+    "retype",
+    [np.asarray, sp.csr_matrix]
+)
+def test_check_array_force_all_finiteinvalid(value, force_all_finite,
+                                             match_msg, retype):
+    X = retype(np.arange(4).reshape(2, 2).astype(float))
+    X[0, 0] = value
+    with pytest.raises(ValueError, match=match_msg):
+        check_array(X, force_all_finite=force_all_finite,
+                    accept_sparse=True)
+
+
+def test_check_array_force_all_finite_object():
+    X = np.array([['a', 'b', np.nan]], dtype=object).T
+
+    X_checked = check_array(X, dtype=None, force_all_finite='allow-nan')
+    assert X is X_checked
+
+    X_checked = check_array(X, dtype=None, force_all_finite=False)
+    assert X is X_checked
+
+    with pytest.raises(ValueError, match='Input contains NaN'):
+        check_array(X, dtype=None, force_all_finite=True)
+
+
+@pytest.mark.parametrize(
+    "X, err_msg",
+    [(np.array([[1, np.nan]]),
+      "Input contains NaN, infinity or a value too large for.*int"),
+     (np.array([[1, np.nan]]),
+      "Input contains NaN, infinity or a value too large for.*int"),
+     (np.array([[1, np.inf]]),
+      "Input contains NaN, infinity or a value too large for.*int"),
+     (np.array([[1, np.nan]], dtype=object),
+      "cannot convert float NaN to integer")]
+)
+@pytest.mark.parametrize("force_all_finite", [True, False])
+def test_check_array_force_all_finite_object_unsafe_casting(
+        X, err_msg, force_all_finite):
+    # casting a float array containing NaN or inf to int dtype should
+    # raise an error irrespective of the force_all_finite parameter.
+    with pytest.raises(ValueError, match=err_msg):
+        check_array(X, dtype=int, force_all_finite=force_all_finite)
+
+
+@ignore_warnings
+def test_check_array():
+    # accept_sparse == False
+    # raise error on sparse inputs
+    X = [[1, 2], [3, 4]]
+    X_csr = sp.csr_matrix(X)
+    with pytest.raises(TypeError):
+        check_array(X_csr)
+
+    # ensure_2d=False
+    X_array = check_array([0, 1, 2], ensure_2d=False)
+    assert X_array.ndim == 1
+    # ensure_2d=True with 1d array
+    with pytest.raises(ValueError, match="Expected 2D array,"
+                                         " got 1D array instead"):
+        check_array([0, 1, 2], ensure_2d=True)
+
+    # ensure_2d=True with scalar array
+    with pytest.raises(ValueError, match="Expected 2D array,"
+                                         " got scalar array instead"):
+        check_array(10, ensure_2d=True)
+
+    # don't allow ndim > 3
+    X_ndim = np.arange(8).reshape(2, 2, 2)
+    with pytest.raises(ValueError):
+        check_array(X_ndim)
+    check_array(X_ndim, allow_nd=True)  # doesn't raise
+
+    # dtype and order enforcement.
+    X_C = np.arange(4).reshape(2, 2).copy("C")
+    X_F = X_C.copy("F")
+    X_int = X_C.astype(int)
+    X_float = X_C.astype(float)
+    Xs = [X_C, X_F, X_int, X_float]
+    dtypes = [np.int32, int, float, np.float32, None, bool, object]
+    orders = ['C', 'F', None]
+    copys = [True, False]
+
+    for X, dtype, order, copy in product(Xs, dtypes, orders, copys):
+        X_checked = check_array(X, dtype=dtype, order=order, copy=copy)
+        if dtype is not None:
+            assert X_checked.dtype == dtype
         else:
-            self._roidb_handler = self.region_proposal_roidb
-
-        # num of subclasses
-        if cfg.SUBCLS_NAME == 'voxel_exemplars':
-            self._num_subclasses = 337 + 1
-        elif cfg.SUBCLS_NAME == 'pose_exemplars':
-            self._num_subclasses = 260 + 1
+            assert X_checked.dtype == X.dtype
+        if order == 'C':
+            assert X_checked.flags['C_CONTIGUOUS']
+            assert not X_checked.flags['F_CONTIGUOUS']
+        elif order == 'F':
+            assert X_checked.flags['F_CONTIGUOUS']
+            assert not X_checked.flags['C_CONTIGUOUS']
+        if copy:
+            assert X is not X_checked
         else:
-            assert (1), 'cfg.SUBCLS_NAME not supported!'
+            # doesn't copy if it was already good
+            if (X.dtype == X_checked.dtype and
+                    X_checked.flags['C_CONTIGUOUS'] == X.flags['C_CONTIGUOUS']
+                    and X_checked.flags['F_CONTIGUOUS'] == X.flags['F_CONTIGUOUS']):
+                assert X is X_checked
 
-        # load the mapping for subcalss to class
-        filename = os.path.join(self._pascal3d_path, cfg.SUBCLS_NAME, 'mapping.txt')
-        assert os.path.exists(filename), 'Path does not exist: {}'.format(filename)
-        
-        mapping = np.zeros(self._num_subclasses, dtype=np.int)
-        with open(filename) as f:
-            for line in f:
-                words = line.split()
-                subcls = int(words[0])
-                mapping[subcls] = self._class_to_ind[words[1]]
-        self._subclass_mapping = mapping
+    # allowed sparse != None
+    X_csc = sp.csc_matrix(X_C)
+    X_coo = X_csc.tocoo()
+    X_dok = X_csc.todok()
+    X_int = X_csc.astype(int)
+    X_float = X_csc.astype(float)
 
-        # PASCAL specific config options
-        self.config = {'cleanup'  : True,
-                       'use_salt' : True,
-                       'top_k'    : 2000}
-
-        # statistics for computing recall
-        self._num_boxes_all = np.zeros(self.num_classes, dtype=np.int)
-        self._num_boxes_covered = np.zeros(self.num_classes, dtype=np.int)
-        self._num_boxes_proposal = 0
-
-        assert os.path.exists(self._pascal3d_path), \
-                'PASCAL3D path does not exist: {}'.format(self._pascal3d_path)
-        assert os.path.exists(self._data_path), \
-                'Path does not exist: {}'.format(self._data_path)
-
-    def image_path_at(self, i):
-        """
-        Return the absolute path to image i in the image sequence.
-        """
-        return self.image_path_from_index(self._image_index[i])
-
-    def image_path_from_index(self, index):
-        """
-        Construct an image path from the image's "index" identifier.
-        """
-        image_path = os.path.join(self._data_path, 'JPEGImages',
-                                  index + self._image_ext)
-        assert os.path.exists(image_path), \
-                'Path does not exist: {}'.format(image_path)
-        return image_path
-
-    def _load_image_set_index(self):
-        """
-        Load the indexes listed in this dataset's image set file.
-        """
-        # Example path to image set file:
-        # self._pascal3d_path + /VOCdevkit2012/VOC2012/ImageSets/Main/val.txt
-        image_set_file = os.path.join(self._data_path, 'ImageSets', 'Main',
-                                      self._image_set + '.txt')
-        assert os.path.exists(image_set_file), \
-                'Path does not exist: {}'.format(image_set_file)
-        with open(image_set_file) as f:
-            image_index = [x.strip() for x in f.readlines()]
-        return image_index
-
-    def _get_default_path(self):
-        """
-        Return the default path where PASCAL3D is expected to be installed.
-        """
-        return os.path.join(ROOT_DIR, 'data', 'PASCAL3D')
-
-    def gt_roidb(self):
-        """
-        Return the database of ground-truth regions of interest.
-
-        This function loads/saves from/to a cache file to speed up future calls.
-        """
-        cache_file = os.path.join(self.cache_path, self.name + '_' + cfg.SUBCLS_NAME + '_gt_roidb.pkl')
-        if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as fid:
-                roidb = pickle.load(fid)
-            print('{} gt roidb loaded from {}'.format(self.name, cache_file))
-            return roidb
-
-        gt_roidb = [self._load_pascal3d_voxel_exemplar_annotation(index)
-                    for index in self.image_index]
-
-        if cfg.IS_RPN:
-            # print out recall
-            for i in range(1, self.num_classes):
-                print('{}: Total number of boxes {:d}'.format(self.classes[i], self._num_boxes_all[i]))
-                print('{}: Number of boxes covered {:d}'.format(self.classes[i], self._num_boxes_covered[i]))
-                print('{}: Recall {:f}'.format(self.classes[i], float(self._num_boxes_covered[i]) / float(self._num_boxes_all[i])))
-
-        with open(cache_file, 'wb') as fid:
-            pickle.dump(gt_roidb, fid, pickle.HIGHEST_PROTOCOL)
-        print('wrote gt roidb to {}'.format(cache_file))
-
-        return gt_roidb
-
-    def _load_pascal_annotation(self, index):
-        """
-        Load image and bounding boxes info from XML file in the PASCAL VOC
-        format.
-        """
-        filename = os.path.join(self._data_path, 'Annotations', index + '.xml')
-        # print 'Loading: {}'.format(filename)
-        def get_data_from_tag(node, tag):
-            return node.getElementsByTagName(tag)[0].childNodes[0].data
-
-        with open(filename) as f:
-            data = minidom.parseString(f.read())
-
-        objs = data.getElementsByTagName('object')
-        num_objs = len(objs)
-
-        boxes = np.zeros((num_objs, 4), dtype=np.uint16)
-        gt_classes = np.zeros((num_objs), dtype=np.int32)
-        overlaps = np.zeros((num_objs, self.num_classes), dtype=np.float32)
-
-        # Load object bounding boxes into a data frame.
-        for ix, obj in enumerate(objs):
-            # Make pixel indexes 0-based
-            x1 = float(get_data_from_tag(obj, 'xmin')) - 1
-            y1 = float(get_data_from_tag(obj, 'ymin')) - 1
-            x2 = float(get_data_from_tag(obj, 'xmax')) - 1
-            y2 = float(get_data_from_tag(obj, 'ymax')) - 1
-            name =  str(get_data_from_tag(obj, "name")).lower().strip()
-            if name in self._classes:
-                cls = self._class_to_ind[name]
-            else:
-                cls = 0
-            boxes[ix, :] = [x1, y1, x2, y2]
-            gt_classes[ix] = cls
-            overlaps[ix, cls] = 1.0
-
-        overlaps = scipy.sparse.csr_matrix(overlaps)
-        gt_subclasses = np.zeros((num_objs), dtype=np.int32)
-        gt_subclasses_flipped = np.zeros((num_objs), dtype=np.int32)
-        subindexes = np.zeros((num_objs, self.num_classes), dtype=np.int32)
-        subindexes_flipped = np.zeros((num_objs, self.num_classes), dtype=np.int32)
-        subindexes = scipy.sparse.csr_matrix(subindexes)
-        subindexes_flipped = scipy.sparse.csr_matrix(subindexes_flipped)
-
-        if cfg.IS_RPN:
-            if cfg.IS_MULTISCALE:
-                # compute overlaps between grid boxes and gt boxes in multi-scales
-                # rescale the gt boxes
-                boxes_all = np.zeros((0, 4), dtype=np.float32)
-                for scale in cfg.TRAIN.SCALES:
-                    boxes_all = np.vstack((boxes_all, boxes * scale))
-                gt_classes_all = np.tile(gt_classes, len(cfg.TRAIN.SCALES))
-
-                # compute grid boxes
-                s = PIL.Image.open(self.image_path_from_index(index)).size
-                image_height = s[1]
-                image_width = s[0]
-                boxes_grid, _, _ = get_boxes_grid(image_height, image_width)
-
-                # compute overlap
-                overlaps_grid = bbox_overlaps(boxes_grid.astype(np.float), boxes_all.astype(np.float))
-        
-                # check how many gt boxes are covered by grids
-                if num_objs != 0:
-                    index = np.tile(list(range(num_objs)), len(cfg.TRAIN.SCALES))
-                    max_overlaps = overlaps_grid.max(axis = 0)
-                    fg_inds = []
-                    for k in range(1, self.num_classes):
-                        fg_inds.extend(np.where((gt_classes_all == k) & (max_overlaps >= cfg.TRAIN.FG_THRESH[k-1]))[0])
-                    index_covered = np.unique(index[fg_inds])
-
-                    for i in range(self.num_classes):
-                        self._num_boxes_all[i] += len(np.where(gt_classes == i)[0])
-                        self._num_boxes_covered[i] += len(np.where(gt_classes[index_covered] == i)[0])
-            else:
-                assert len(cfg.TRAIN.SCALES_BASE) == 1
-                scale = cfg.TRAIN.SCALES_BASE[0]
-                feat_stride = 16
-                # faster rcnn region proposal
-                anchors = generate_anchors()
-                num_anchors = anchors.shape[0]
-
-                # image size
-                s = PIL.Image.open(self.image_path_from_index(index)).size
-                image_height = s[1]
-                image_width = s[0]
-
-                # height and width of the heatmap
-                height = np.round((image_height * scale - 1) / 4.0 + 1)
-                height = np.floor((height - 1) / 2 + 1 + 0.5)
-                height = np.floor((height - 1) / 2 + 1 + 0.5)
-
-                width = np.round((image_width * scale - 1) / 4.0 + 1)
-                width = np.floor((width - 1) / 2.0 + 1 + 0.5)
-                width = np.floor((width - 1) / 2.0 + 1 + 0.5)
-
-                # gt boxes
-                gt_boxes = boxes * scale
-
-                # 1. Generate proposals from bbox deltas and shifted anchors
-                shift_x = np.arange(0, width) * feat_stride
-                shift_y = np.arange(0, height) * feat_stride
-                shift_x, shift_y = np.meshgrid(shift_x, shift_y)
-                shifts = np.vstack((shift_x.ravel(), shift_y.ravel(),
-                            shift_x.ravel(), shift_y.ravel())).transpose()
-                # add A anchors (1, A, 4) to
-                # cell K shifts (K, 1, 4) to get
-                # shift anchors (K, A, 4)
-                # reshape to (K*A, 4) shifted anchors
-                A = num_anchors
-                K = shifts.shape[0]
-                all_anchors = (anchors.reshape((1, A, 4)) + shifts.reshape((1, K, 4)).transpose((1, 0, 2)))
-                all_anchors = all_anchors.reshape((K * A, 4))
-
-                # compute overlap
-                overlaps_grid = bbox_overlaps(all_anchors.astype(np.float), gt_boxes.astype(np.float))
-        
-                # check how many gt boxes are covered by anchors
-                if num_objs != 0:
-                    max_overlaps = overlaps_grid.max(axis = 0)
-                    fg_inds = []
-                    for k in range(1, self.num_classes):
-                        fg_inds.extend(np.where((gt_classes == k) & (max_overlaps >= cfg.TRAIN.FG_THRESH[k-1]))[0])
-
-                    for i in range(self.num_classes):
-                        self._num_boxes_all[i] += len(np.where(gt_classes == i)[0])
-                        self._num_boxes_covered[i] += len(np.where(gt_classes[fg_inds] == i)[0])
-
-        return {'boxes' : boxes,
-                'gt_classes': gt_classes,
-                'gt_subclasses': gt_subclasses,
-                'gt_subclasses_flipped': gt_subclasses_flipped,
-                'gt_overlaps' : overlaps,
-                'gt_subindexes': subindexes,
-                'gt_subindexes_flipped': subindexes_flipped,
-                'flipped' : False}
-
-
-    def _load_pascal3d_voxel_exemplar_annotation(self, index):
-        """
-        Load image and bounding boxes info from txt file in the pascal subcategory exemplar format.
-        """
-
-        if self._image_set == 'val':
-            return self._load_pascal_annotation(index)
-
-        filename = os.path.join(self._pascal3d_path, cfg.SUBCLS_NAME, index + '.txt')
-        assert os.path.exists(filename), \
-                'Path does not exist: {}'.format(filename)
-
-        # the annotation file contains flipped objects    
-        lines = []
-        lines_flipped = []
-        with open(filename) as f:
-            for line in f:
-                words = line.split()
-                subcls = int(words[1])
-                is_flip = int(words[2])
-                if subcls != -1:
-                    if is_flip == 0:
-                        lines.append(line)
-                    else:
-                        lines_flipped.append(line)
-        
-        num_objs = len(lines)
-
-        # store information of flipped objects
-        assert (num_objs == len(lines_flipped)), 'The number of flipped objects is not the same!'
-        gt_subclasses_flipped = np.zeros((num_objs), dtype=np.int32)
-        
-        for ix, line in enumerate(lines_flipped):
-            words = line.split()
-            subcls = int(words[1])
-            gt_subclasses_flipped[ix] = subcls
-
-        boxes = np.zeros((num_objs, 4), dtype=np.float32)
-        gt_classes = np.zeros((num_objs), dtype=np.int32)
-        gt_subclasses = np.zeros((num_objs), dtype=np.int32)
-        overlaps = np.zeros((num_objs, self.num_classes), dtype=np.float32)
-        subindexes = np.zeros((num_objs, self.num_classes), dtype=np.int32)
-        subindexes_flipped = np.zeros((num_objs, self.num_classes), dtype=np.int32)
-
-        for ix, line in enumerate(lines):
-            words = line.split()
-            cls = self._class_to_ind[words[0]]
-            subcls = int(words[1])
-            # Make pixel indexes 0-based
-            boxes[ix, :] = [float(n)-1 for n in words[3:7]]
-            gt_classes[ix] = cls
-            gt_subclasses[ix] = subcls
-            overlaps[ix, cls] = 1.0
-            subindexes[ix, cls] = subcls
-            subindexes_flipped[ix, cls] = gt_subclasses_flipped[ix]
-
-        overlaps = scipy.sparse.csr_matrix(overlaps)
-        subindexes = scipy.sparse.csr_matrix(subindexes)
-        subindexes_flipped = scipy.sparse.csr_matrix(subindexes_flipped)
-
-        if cfg.IS_RPN:
-            if cfg.IS_MULTISCALE:
-                # compute overlaps between grid boxes and gt boxes in multi-scales
-                # rescale the gt boxes
-                boxes_all = np.zeros((0, 4), dtype=np.float32)
-                for scale in cfg.TRAIN.SCALES:
-                    boxes_all = np.vstack((boxes_all, boxes * scale))
-                gt_classes_all = np.tile(gt_classes, len(cfg.TRAIN.SCALES))
-
-                # compute grid boxes
-                s = PIL.Image.open(self.image_path_from_index(index)).size
-                image_height = s[1]
-                image_width = s[0]
-                boxes_grid, _, _ = get_boxes_grid(image_height, image_width)
-
-                # compute overlap
-                overlaps_grid = bbox_overlaps(boxes_grid.astype(np.float), boxes_all.astype(np.float))
-        
-                # check how many gt boxes are covered by grids
-                if num_objs != 0:
-                    index = np.tile(list(range(num_objs)), len(cfg.TRAIN.SCALES))
-                    max_overlaps = overlaps_grid.max(axis = 0)
-                    fg_inds = []
-                    for k in range(1, self.num_classes):
-                        fg_inds.extend(np.where((gt_classes_all == k) & (max_overlaps >= cfg.TRAIN.FG_THRESH[k-1]))[0])
-                    index_covered = np.unique(index[fg_inds])
-
-                    for i in range(self.num_classes):
-                        self._num_boxes_all[i] += len(np.where(gt_classes == i)[0])
-                        self._num_boxes_covered[i] += len(np.where(gt_classes[index_covered] == i)[0])
-            else:
-                assert len(cfg.TRAIN.SCALES_BASE) == 1
-                scale = cfg.TRAIN.SCALES_BASE[0]
-                feat_stride = 16
-                # faster rcnn region proposal
-                base_size = 16
-                ratios = [3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25]
-                scales = 2**np.arange(1, 6, 0.5)
-                anchors = generate_anchors(base_size, ratios, scales)
-                num_anchors = anchors.shape[0]
-
-                # image size
-                s = PIL.Image.open(self.image_path_from_index(index)).size
-                image_height = s[1]
-                image_width = s[0]
-
-                # height and width of the heatmap
-                height = np.round((image_height * scale - 1) / 4.0 + 1)
-                height = np.floor((height - 1) / 2 + 1 + 0.5)
-                height = np.floor((height - 1) / 2 + 1 + 0.5)
-
-                width = np.round((image_width * scale - 1) / 4.0 + 1)
-                width = np.floor((width - 1) / 2.0 + 1 + 0.5)
-                width = np.floor((width - 1) / 2.0 + 1 + 0.5)
-
-                # gt boxes
-                gt_boxes = boxes * scale
-
-                # 1. Generate proposals from bbox deltas and shifted anchors
-                shift_x = np.arange(0, width) * feat_stride
-                shift_y = np.arange(0, height) * feat_stride
-                shift_x, shift_y = np.meshgrid(shift_x, shift_y)
-                shifts = np.vstack((shift_x.ravel(), shift_y.ravel(),
-                            shift_x.ravel(), shift_y.ravel())).transpose()
-                # add A anchors (1, A, 4) to
-                # cell K shifts (K, 1, 4) to get
-                # shift anchors (K, A, 4)
-                # reshape to (K*A, 4) shifted anchors
-                A = num_anchors
-                K = shifts.shape[0]
-                all_anchors = (anchors.reshape((1, A, 4)) + shifts.reshape((1, K, 4)).transpose((1, 0, 2)))
-                all_anchors = all_anchors.reshape((K * A, 4))
-
-                # compute overlap
-                overlaps_grid = bbox_overlaps(all_anchors.astype(np.float), gt_boxes.astype(np.float))
-        
-                # check how many gt boxes are covered by anchors
-                if num_objs != 0:
-                    max_overlaps = overlaps_grid.max(axis = 0)
-                    fg_inds = []
-                    for k in range(1, self.num_classes):
-                        fg_inds.extend(np.where((gt_classes == k) & (max_overlaps >= cfg.TRAIN.FG_THRESH[k-1]))[0])
-
-                    for i in range(self.num_classes):
-                        self._num_boxes_all[i] += len(np.where(gt_classes == i)[0])
-                        self._num_boxes_covered[i] += len(np.where(gt_classes[fg_inds] == i)[0])
-
-        return {'boxes' : boxes,
-                'gt_classes': gt_classes,
-                'gt_subclasses': gt_subclasses,
-                'gt_subclasses_flipped': gt_subclasses_flipped,
-                'gt_overlaps': overlaps,
-                'gt_subindexes': subindexes, 
-                'gt_subindexes_flipped': subindexes_flipped, 
-                'flipped' : False}
-
-    def region_proposal_roidb(self):
-        """
-        Return the database of regions of interest.
-        Ground-truth ROIs are also included.
-
-        This function loads/saves from/to a cache file to speed up future calls.
-        """
-        cache_file = os.path.join(self.cache_path,
-                                  self.name + '_' + cfg.SUBCLS_NAME + '_' + cfg.REGION_PROPOSAL + '_region_proposal_roidb.pkl')
-
-        if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as fid:
-                roidb = pickle.load(fid)
-            print('{} roidb loaded from {}'.format(self.name, cache_file))
-            return roidb
-
-        if self._image_set != 'test':
-            gt_roidb = self.gt_roidb()
-
-            print('Loading region proposal network boxes...')
-            model = cfg.REGION_PROPOSAL
-            rpn_roidb = self._load_rpn_roidb(gt_roidb, model)
-            print('Region proposal network boxes loaded')
-            roidb = imdb.merge_roidbs(rpn_roidb, gt_roidb)
+    Xs = [X_csc, X_coo, X_dok, X_int, X_float]
+    accept_sparses = [['csr', 'coo'], ['coo', 'dok']]
+    for X, dtype, accept_sparse, copy in product(Xs, dtypes, accept_sparses,
+                                                 copys):
+        with warnings.catch_warnings(record=True) as w:
+            X_checked = check_array(X, dtype=dtype,
+                                    accept_sparse=accept_sparse, copy=copy)
+        if (dtype is object or sp.isspmatrix_dok(X)) and len(w):
+            # XXX unreached code as of v0.22
+            message = str(w[0].message)
+            messages = ["object dtype is not supported by sparse matrices",
+                        "Can't check dok sparse matrix for nan or inf."]
+            assert message in messages
         else:
-            print('Loading region proposal network boxes...')
-            model = cfg.REGION_PROPOSAL
-            roidb = self._load_rpn_roidb(None, model)
-            print('Region proposal network boxes loaded')
-
-        print('{} region proposals per image'.format(self._num_boxes_proposal / len(self.image_index)))
-
-        with open(cache_file, 'wb') as fid:
-            pickle.dump(roidb, fid, pickle.HIGHEST_PROTOCOL)
-        print('wrote roidb to {}'.format(cache_file))
-
-        return roidb
-
-    def _load_rpn_roidb(self, gt_roidb, model):
-        # set the prefix
-        if self._image_set == 'val':
-            prefix = model + '/validation'
-        elif self._image_set == 'train':
-            prefix = model + '/training'
+            assert len(w) == 0
+        if dtype is not None:
+            assert X_checked.dtype == dtype
         else:
-            predix = ''
-
-        box_list = []
-        for index in self.image_index:
-            filename = os.path.join(self._pascal3d_path, 'region_proposals',  prefix, index + '.txt')
-            assert os.path.exists(filename), \
-                'RPN data not found at: {}'.format(filename)
-            raw_data = np.loadtxt(filename, dtype=float)
-            if len(raw_data.shape) == 1:
-                if raw_data.size == 0:
-                    raw_data = raw_data.reshape((0, 5))
-                else:
-                    raw_data = raw_data.reshape((1, 5))
-
-            x1 = raw_data[:, 0]
-            y1 = raw_data[:, 1]
-            x2 = raw_data[:, 2]
-            y2 = raw_data[:, 3]
-            score = raw_data[:, 4]
-            inds = np.where((x2 > x1) & (y2 > y1))[0]
-            raw_data = raw_data[inds,:4]
-            self._num_boxes_proposal += raw_data.shape[0]
-            box_list.append(raw_data)
-
-        return self.create_roidb_from_box_list(box_list, gt_roidb)
-
-
-    def selective_search_roidb(self):
-        """
-        Return the database of selective search regions of interest.
-        Ground-truth ROIs are also included.
-
-        This function loads/saves from/to a cache file to speed up future calls.
-        """
-        cache_file = os.path.join(self.cache_path,
-                                  self.name + '_selective_search_roidb.pkl')
-
-        if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as fid:
-                roidb = pickle.load(fid)
-            print('{} ss roidb loaded from {}'.format(self.name, cache_file))
-            return roidb
-
-        if int(self._year) == 2007 or self._image_set != 'test':
-            gt_roidb = self.gt_roidb()
-            ss_roidb = self._load_selective_search_roidb(gt_roidb)
-            roidb = imdb.merge_roidbs(gt_roidb, ss_roidb)
+            assert X_checked.dtype == X.dtype
+        if X.format in accept_sparse:
+            # no change if allowed
+            assert X.format == X_checked.format
         else:
-            roidb = self._load_selective_search_roidb(None)
-        with open(cache_file, 'wb') as fid:
-            pickle.dump(roidb, fid, pickle.HIGHEST_PROTOCOL)
-        print('wrote ss roidb to {}'.format(cache_file))
-
-        return roidb
-
-    def _load_selective_search_roidb(self, gt_roidb):
-        filename = os.path.abspath(os.path.join(self.cache_path, '..',
-                                                'selective_search_data',
-                                                self.name + '.mat'))
-        assert os.path.exists(filename), \
-               'Selective search data not found at: {}'.format(filename)
-        raw_data = sio.loadmat(filename)['boxes'].ravel()
-
-        box_list = []
-        for i in range(raw_data.shape[0]):
-            box_list.append(raw_data[i][:, (1, 0, 3, 2)] - 1)
-
-        return self.create_roidb_from_box_list(box_list, gt_roidb)
-
-    def selective_search_IJCV_roidb(self):
-        """
-        Return the database of selective search regions of interest.
-        Ground-truth ROIs are also included.
-
-        This function loads/saves from/to a cache file to speed up future calls.
-        """
-        cache_file = os.path.join(self.cache_path,
-                '{:s}_selective_search_IJCV_top_{:d}_roidb.pkl'.
-                format(self.name, self.config['top_k']))
-
-        if os.path.exists(cache_file):
-            with open(cache_file, 'rb') as fid:
-                roidb = pickle.load(fid)
-            print('{} ss roidb loaded from {}'.format(self.name, cache_file))
-            return roidb
-
-        gt_roidb = self.gt_roidb()
-        ss_roidb = self._load_selective_search_IJCV_roidb(gt_roidb)
-        roidb = imdb.merge_roidbs(gt_roidb, ss_roidb)
-        with open(cache_file, 'wb') as fid:
-            pickle.dump(roidb, fid, pickle.HIGHEST_PROTOCOL)
-        print('wrote ss roidb to {}'.format(cache_file))
-
-        return roidb
-
-    def _load_selective_search_IJCV_roidb(self, gt_roidb):
-        IJCV_path = os.path.abspath(os.path.join(self.cache_path, '..',
-                                                 'selective_search_IJCV_data',
-                                                 'voc_' + self._year))
-        assert os.path.exists(IJCV_path), \
-               'Selective search IJCV data not found at: {}'.format(IJCV_path)
-
-        top_k = self.config['top_k']
-        box_list = []
-        for i in range(self.num_images):
-            filename = os.path.join(IJCV_path, self.image_index[i] + '.mat')
-            raw_data = sio.loadmat(filename)
-            box_list.append((raw_data['boxes'][:top_k, :]-1).astype(np.uint16))
-
-        return self.create_roidb_from_box_list(box_list, gt_roidb)
-
-    # evaluate detection results
-    def evaluate_detections(self, all_boxes, output_dir):
-        # load the mapping for subcalss the azimuth (viewpoint)
-        filename = os.path.join(self._pascal3d_path, cfg.SUBCLS_NAME, 'mapping.txt')
-        assert os.path.exists(filename), \
-                'Path does not exist: {}'.format(filename)
-
-        mapping = np.zeros(self._num_subclasses, dtype=np.float)
-        with open(filename) as f:
-            for line in f:
-                words = line.split()
-                subcls = int(words[0])
-                mapping[subcls] = float(words[2])
-
-        for cls_ind, cls in enumerate(self.classes):
-            if cls == '__background__':
-                continue
-            print('Writing {} VOC results file'.format(cls))
-            filename = os.path.join(output_dir, 'det_' + self._image_set + '_' + cls + '.txt')
-            print(filename)
-
-            with open(filename, 'wt') as f:
-                for im_ind, index in enumerate(self.image_index):
-                    dets = all_boxes[cls_ind][im_ind]
-                    if dets == []:
-                        continue
-                    # the VOCdevkit expects 1-based indices
-                    for k in range(dets.shape[0]):
-                        subcls = int(dets[k, 5])
-                        cls_name = self.classes[self.subclass_mapping[subcls]]
-                        assert (cls_name == cls), 'subclass not in class'
-                        azimuth = mapping[subcls]
-                        f.write('{:s} {:.3f} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
-                                format(index, dets[k, 4], azimuth,
-                                       dets[k, 0] + 1, dets[k, 1] + 1,
-                                       dets[k, 2] + 1, dets[k, 3] + 1))
-
-    # evaluate detection results
-    def evaluate_detections_one_file(self, all_boxes, output_dir):
-        # open results file
-        filename = os.path.join(output_dir, 'detections.txt')
-        print('Writing all PASCAL3D results to file ' + filename)
-        with open(filename, 'wt') as f:
-            for im_ind, index in enumerate(self.image_index):
-                for cls_ind, cls in enumerate(self.classes):
-                    if cls == '__background__':
-                        continue
-                    dets = all_boxes[cls_ind][im_ind]
-                    if dets == []:
-                        continue
-                    # the VOCdevkit expects 1-based indices
-                    for k in range(dets.shape[0]):
-                        subcls = int(dets[k, 5])
-                        cls_name = self.classes[self.subclass_mapping[subcls]]
-                        assert (cls_name == cls), 'subclass not in class'
-                        f.write('{:s} {:s} {:f} {:f} {:f} {:f} {:d} {:f}\n'.
-                                format(index, cls, dets[k, 0] + 1, dets[k, 1] + 1,
-                                       dets[k, 2] + 1, dets[k, 3] + 1, subcls, dets[k, 4]))
-
-
-    def evaluate_proposals(self, all_boxes, output_dir):
-        # for each image
-        for im_ind, index in enumerate(self.image_index):
-            filename = os.path.join(output_dir, index + '.txt')
-            print('Writing PASCAL results to file ' + filename)
-            with open(filename, 'wt') as f:
-                # for each class
-                for cls_ind, cls in enumerate(self.classes):
-                    if cls == '__background__':
-                        continue
-                    dets = all_boxes[cls_ind][im_ind]
-                    if dets == []:
-                        continue
-                    for k in range(dets.shape[0]):
-                        f.write('{:f} {:f} {:f} {:f} {:.32f}\n'.format(\
-                                 dets[k, 0], dets[k, 1], dets[k, 2], dets[k, 3], dets[k, 4]))
-
-    def evaluate_proposals_msr(self, all_boxes, output_dir):
-        # for each image
-        for im_ind, index in enumerate(self.image_index):
-            filename = os.path.join(output_dir, index + '.txt')
-            print('Writing PASCAL results to file ' + filename)
-            with open(filename, 'wt') as f:
-                dets = all_boxes[im_ind]
-                if dets == []:
-                    continue
-                for k in range(dets.shape[0]):
-                    f.write('{:f} {:f} {:f} {:f} {:.32f}\n'.format(dets[k, 0], dets[k, 1], dets[k, 2], dets[k, 3], dets[k, 4]))
-
-
-    def competition_mode(self, on):
-        if on:
-            self.config['use_salt'] = False
-            self.config['cleanup'] = False
+            # got converted
+            assert X_checked.format == accept_sparse[0]
+        if copy:
+            assert X is not X_checked
         else:
-            self.config['use_salt'] = True
-            self.config['cleanup'] = True
+            # doesn't copy if it was already good
+            if X.dtype == X_checked.dtype and X.format == X_checked.format:
+                assert X is X_checked
 
-if __name__ == '__main__':
-    d = pascal3d('train')
-    res = d.roidb
-    from IPython import embed; embed()
+    # other input formats
+    # convert lists to arrays
+    X_dense = check_array([[1, 2], [3, 4]])
+    assert isinstance(X_dense, np.ndarray)
+    # raise on too deep lists
+    with pytest.raises(ValueError):
+        check_array(X_ndim.tolist())
+    check_array(X_ndim.tolist(), allow_nd=True)  # doesn't raise
+
+    # convert weird stuff to arrays
+    X_no_array = _NotAnArray(X_dense)
+    result = check_array(X_no_array)
+    assert isinstance(result, np.ndarray)
+
+    # deprecation warning if string-like array with dtype="numeric"
+    expected_warn_regex = r"converted to decimal numbers if dtype='numeric'"
+    X_str = [['11', '12'], ['13', 'xx']]
+    for X in [X_str, np.array(X_str, dtype='U'), np.array(X_str, dtype='S')]:
+        with pytest.warns(FutureWarning, match=expected_warn_regex):
+            check_array(X, dtype="numeric")
+
+    # deprecation warning if byte-like array with dtype="numeric"
+    X_bytes = [[b'a', b'b'], [b'c', b'd']]
+    for X in [X_bytes, np.array(X_bytes, dtype='V1')]:
+        with pytest.warns(FutureWarning, match=expected_warn_regex):
+            check_array(X, dtype="numeric")
+
+
+@pytest.mark.parametrize("pd_dtype", ["Int8", "Int16", "UInt8", "UInt16"])
+@pytest.mark.parametrize("dtype, expected_dtype", [
+    ([np.float32, np.float64], np.float32),
+    (np.float64, np.float64),
+    ("numeric", np.float64),
+])
+def test_check_array_pandas_na_support(pd_dtype, dtype, expected_dtype):
+    # Test pandas IntegerArray with pd.NA
+    pd = pytest.importorskip('pandas', minversion="1.0")
+
+    X_np = np.array([[1, 2, 3, np.nan, np.nan],
+                     [np.nan, np.nan, 8, 4, 6],
+                     [1, 2, 3, 4, 5]]).T
+
+    # Creates dataframe with IntegerArrays with pd.NA
+    X = pd.DataFrame(X_np, dtype=pd_dtype, columns=['a', 'b', 'c'])
+    # column c has no nans
+    X['c'] = X['c'].astype('float')
+    X_checked = check_array(X, force_all_finite='allow-nan', dtype=dtype)
+    assert_allclose(X_checked, X_np)
+    assert X_checked.dtype == expected_dtype
+
+    X_checked = check_array(X, force_all_finite=False, dtype=dtype)
+    assert_allclose(X_checked, X_np)
+    assert X_checked.dtype == expected_dtype
+
+    msg = "Input contains NaN, infinity"
+    with pytest.raises(ValueError, match=msg):
+        check_array(X, force_all_finite=True)
+
+
+def test_check_array_pandas_dtype_object_conversion():
+    # test that data-frame like objects with dtype object
+    # get converted
+    X = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=object)
+    X_df = MockDataFrame(X)
+    assert check_array(X_df).dtype.kind == "f"
+    assert check_array(X_df, ensure_2d=False).dtype.kind == "f"
+    # smoke-test against dataframes with column named "dtype"
+    X_df.dtype = "Hans"
+    assert check_array(X_df, ensure_2d=False).dtype.kind == "f"
+
+
+def test_check_array_pandas_dtype_casting():
+    # test that data-frames with homogeneous dtype are not upcast
+    pd = pytest.importorskip('pandas')
+    X = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32)
+    X_df = pd.DataFrame(X)
+    assert check_array(X_df).dtype == np.float32
+    assert check_array(X_df, dtype=FLOAT_DTYPES).dtype == np.float32
+
+    X_df.iloc[:, 0] = X_df.iloc[:, 0].astype(np.float16)
+    assert_array_equal(X_df.dtypes,
+                       (np.float16, np.float32, np.float32))
+    assert check_array(X_df).dtype == np.float32
+    assert check_array(X_df, dtype=FLOAT_DTYPES).dtype == np.float32
+
+    X_df.iloc[:, 1] = X_df.iloc[:, 1].astype(np.int16)
+    # float16, int16, float32 casts to float32
+    assert check_array(X_df).dtype == np.float32
+    assert check_array(X_df, dtype=FLOAT_DTYPES).dtype == np.float32
+
+    X_df.iloc[:, 2] = X_df.iloc[:, 2].astype(np.float16)
+    # float16, int16, float16 casts to float32
+    assert check_array(X_df).dtype == np.float32
+    assert check_array(X_df, dtype=FLOAT_DTYPES).dtype == np.float32
+
+    X_df = X_df.astype(np.int16)
+    assert check_array(X_df).dtype == np.int16
+    # we're not using upcasting rules for determining
+    # the target type yet, so we cast to the default of float64
+    assert check_array(X_df, dtype=FLOAT_DTYPES).dtype == np.float64
+
+    # check that we handle pandas dtypes in a semi-reasonable way
+    # this is actually tricky because we can't really know that this
+    # should be integer ahead of converting it.
+    cat_df = pd.DataFrame([pd.Categorical([1, 2, 3])])
+    assert (check_array(cat_df).dtype == np.int64)
+    assert (check_array(cat_df, dtype=FLOAT_DTYPES).dtype
+            == np.float64)
+
+
+def test_check_array_on_mock_dataframe():
+    arr = np.array([[0.2, 0.7], [0.6, 0.5], [0.4, 0.1], [0.7, 0.2]])
+    mock_df = MockDataFrame(arr)
+    checked_arr = check_array(mock_df)
+    assert checked_arr.dtype == arr.dtype
+    checked_arr = check_array(mock_df, dtype=np.float32)
+    assert checked_arr.dtype == np.dtype(np.float32)
+
+
+def test_check_array_dtype_stability():
+    # test that lists with ints don't get converted to floats
+    X = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    assert check_array(X).dtype.kind == "i"
+    assert check_array(X, ensure_2d=False).dtype.kind == "i"
+
+
+def test_check_array_dtype_warning():
+    X_int_list = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    X_float32 = np.asarray(X_int_list, dtype=np.float32)
+    X_int64 = np.asarray(X_int_list, dtype=np.int64)
+    X_csr_float32 = sp.csr_matrix(X_float32)
+    X_csc_float32 = sp.csc_matrix(X_float32)
+    X_csc_int32 = sp.csc_matrix(X_int64, dtype=np.int32)
+    integer_data = [X_int64, X_csc_int32]
+    float32_data = [X_float32, X_csr_float32, X_csc_float32]
+    for X in integer_data:
+        X_checked = assert_no_warnings(check_array, X, dtype=np.float64,
+                                       accept_sparse=True)
+        assert X_checked.dtype == np.float64
+
+    for X in float32_data:
+        X_checked = assert_no_warnings(check_array, X,
+                                       dtype=[np.float64, np.float32],
+                                       accept_sparse=True)
+        assert X_checked.dtype == np.float32
+        assert X_checked is X
+
+        X_checked = assert_no_warnings(check_array, X,
+                                       dtype=[np.float64, np.float32],
+                                       accept_sparse=['csr', 'dok'],
+                                       copy=True)
+        assert X_checked.dtype == np.float32
+        assert X_checked is not X
+
+    X_checked = assert_no_warnings(check_array, X_csc_float32,
+                                   dtype=[np.float64, np.float32],
+                                   accept_sparse=['csr', 'dok'],
+                                   copy=False)
+    assert X_checked.dtype == np.float32
+    assert X_checked is not X_csc_float32
+    assert X_checked.format == 'csr'
+
+
+def test_check_array_accept_sparse_type_exception():
+    X = [[1, 2], [3, 4]]
+    X_csr = sp.csr_matrix(X)
+    invalid_type = SVR()
+
+    msg = ("A sparse matrix was passed, but dense data is required. "
+           r"Use X.toarray\(\) to convert to a dense numpy array.")
+    with pytest.raises(TypeError, match=msg):
+        check_array(X_csr, accept_sparse=False)
+
+    msg = ("Parameter 'accept_sparse' should be a string, "
+           "boolean or list of strings. You provided 'accept_sparse=.*'.")
+    with pytest.raises(ValueError, match=msg):
+        check_array(X_csr, accept_sparse=invalid_type)
+
+    msg = ("When providing 'accept_sparse' as a tuple or list, "
+           "it must contain at least one string value.")
+    with pytest.raises(ValueError, match=msg):
+        check_array(X_csr, accept_sparse=[])
+    with pytest.raises(ValueError, match=msg):
+        check_array(X_csr, accept_sparse=())
+    with pytest.raises(TypeError, match="SVR"):
+        check_array(X_csr, accept_sparse=[invalid_type])
+
+
+def test_check_array_accept_sparse_no_exception():
+    X = [[1, 2], [3, 4]]
+    X_csr = sp.csr_matrix(X)
+
+    check_array(X_csr, accept_sparse=True)
+    check_array(X_csr, accept_sparse='csr')
+    check_array(X_csr, accept_sparse=['csr'])
+    check_array(X_csr, accept_sparse=('csr',))
+
+
+@pytest.fixture(params=['csr', 'csc', 'coo', 'bsr'])
+def X_64bit(request):
+    X = sp.rand(20, 10, format=request.param)
+    for attr in ['indices', 'indptr', 'row', 'col']:
+        if hasattr(X, attr):
+            setattr(X, attr, getattr(X, attr).astype('int64'))
+    yield X
+
+
+def test_check_array_accept_large_sparse_no_exception(X_64bit):
+    # When large sparse are allowed
+    check_array(X_64bit, accept_large_sparse=True, accept_sparse=True)
+
+
+def test_check_array_accept_large_sparse_raise_exception(X_64bit):
+    # When large sparse are not allowed
+    msg = ("Only sparse matrices with 32-bit integer indices "
+           "are accepted. Got int64 indices.")
+    with pytest.raises(ValueError, match=msg):
+        check_array(X_64bit, accept_sparse=True, accept_large_sparse=False)
+
+
+def test_check_array_min_samples_and_features_messages():
+    # empty list is considered 2D by default:
+    msg = r"0 feature\(s\) \(shape=\(1, 0\)\) while a minimum of 1 is" \
+          " required."
+    with pytest.raises(ValueError, match=msg):
+        check_array([[]])
+
+    # If considered a 1D collection when ensure_2d=False, then the minimum
+    # number of samples will break:
+    msg = r"0 sample\(s\) \(shape=\(0,\)\) while a minimum of 1 is required."
+    with pytest.raises(ValueError, match=msg):
+        check_array([], ensure_2d=False)
+
+    # Invalid edge case when checking the default minimum sample of a scalar
+    msg = r"Singleton array array\(42\) cannot be considered a valid" \
+          " collection."
+    with pytest.raises(TypeError, match=msg):
+        check_array(42, ensure_2d=False)
+
+    # Simulate a model that would need at least 2 samples to be well defined
+    X = np.ones((1, 10))
+    y = np.ones(1)
+    msg = r"1 sample\(s\) \(shape=\(1, 10\)\) while a minimum of 2 is" \
+          " required."
+    with pytest.raises(ValueError, match=msg):
+        check_X_y(X, y, ensure_min_samples=2)
+
+    # The same message is raised if the data has 2 dimensions even if this is
+    # not mandatory
+    with pytest.raises(ValueError, match=msg):
+        check_X_y(X, y, ensure_min_samples=2, ensure_2d=False)
+
+    # Simulate a model that would require at least 3 features (e.g. SelectKBest
+    # with k=3)
+    X = np.ones((10, 2))
+    y = np.ones(2)
+    msg = r"2 feature\(s\) \(shape=\(10, 2\)\) while a minimum of 3 is" \
+          " required."
+    with pytest.raises(ValueError, match=msg):
+        check_X_y(X, y, ensure_min_features=3)
+
+    # Only the feature check is enabled whenever the number of dimensions is 2
+    # even if allow_nd is enabled:
+    with pytest.raises(ValueError, match=msg):
+        check_X_y(X, y, ensure_min_features=3, allow_nd=True)
+
+    # Simulate a case where a pipeline stage as trimmed all the features of a
+    # 2D dataset.
+    X = np.empty(0).reshape(10, 0)
+    y = np.ones(10)
+    msg = r"0 feature\(s\) \(shape=\(10, 0\)\) while a minimum of 1 is" \
+          " required."
+    with pytest.raises(ValueError, match=msg):
+        check_X_y(X, y)
+
+    # nd-data is not checked for any minimum number of features by default:
+    X = np.ones((10, 0, 28, 28))
+    y = np.ones(10)
+    X_checked, y_checked = check_X_y(X, y, allow_nd=True)
+    assert_array_equal(X, X_checked)
+    assert_array_equal(y, y_checked)
+
+
+def test_check_array_complex_data_error():
+    X = np.array([[1 + 2j, 3 + 4j, 5 + 7j], [2 + 3j, 4 + 5j, 6 + 7j]])
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+    # list of lists
+    X = [[1 + 2j, 3 + 4j, 5 + 7j], [2 + 3j, 4 + 5j, 6 + 7j]]
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+    # tuple of tuples
+    X = ((1 + 2j, 3 + 4j, 5 + 7j), (2 + 3j, 4 + 5j, 6 + 7j))
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+    # list of np arrays
+    X = [np.array([1 + 2j, 3 + 4j, 5 + 7j]),
+         np.array([2 + 3j, 4 + 5j, 6 + 7j])]
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+    # tuple of np arrays
+    X = (np.array([1 + 2j, 3 + 4j, 5 + 7j]),
+         np.array([2 + 3j, 4 + 5j, 6 + 7j]))
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+    # dataframe
+    X = MockDataFrame(
+        np.array([[1 + 2j, 3 + 4j, 5 + 7j], [2 + 3j, 4 + 5j, 6 + 7j]]))
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+    # sparse matrix
+    X = sp.coo_matrix([[0, 1 + 2j], [0, 0]])
+    with pytest.raises(ValueError, match="Complex data not supported"):
+        check_array(X)
+
+
+def test_has_fit_parameter():
+    assert not has_fit_parameter(KNeighborsClassifier, "sample_weight")
+    assert has_fit_parameter(RandomForestRegressor, "sample_weight")
+    assert has_fit_parameter(SVR, "sample_weight")
+    assert has_fit_parameter(SVR(), "sample_weight")
+
+    class TestClassWithDeprecatedFitMethod:
+        @deprecated("Deprecated for the purpose of testing has_fit_parameter")
+        def fit(self, X, y, sample_weight=None):
+            pass
+
+    assert has_fit_parameter(TestClassWithDeprecatedFitMethod,
+                             "sample_weight"), \
+        "has_fit_parameter fails for class with deprecated fit method."
+
+
+def test_check_symmetric():
+    arr_sym = np.array([[0, 1], [1, 2]])
+    arr_bad = np.ones(2)
+    arr_asym = np.array([[0, 2], [0, 2]])
+
+    test_arrays = {'dense': arr_asym,
+                   'dok': sp.dok_matrix(arr_asym),
+                   'csr': sp.csr_matrix(arr_asym),
+                   'csc': sp.csc_matrix(arr_asym),
+                   'coo': sp.coo_matrix(arr_asym),
+                   'lil': sp.lil_matrix(arr_asym),
+                   'bsr': sp.bsr_matrix(arr_asym)}
+
+    # check error for bad inputs
+    with pytest.raises(ValueError):
+        check_symmetric(arr_bad)
+
+    # check that asymmetric arrays are properly symmetrized
+    for arr_format, arr in test_arrays.items():
+        # Check for warnings and errors
+        with pytest.warns(UserWarning):
+            check_symmetric(arr)
+        with pytest.raises(ValueError):
+            check_symmetric(arr, raise_exception=True)
+
+        output = check_symmetric(arr, raise_warning=False)
+        if sp.issparse(output):
+            assert output.format == arr_format
+            assert_array_equal(output.toarray(), arr_sym)
+        else:
+            assert_array_equal(output, arr_sym)
+
+
+def test_check_is_fitted():
+    # Check is TypeError raised when non estimator instance passed
+    with pytest.raises(TypeError):
+        check_is_fitted(ARDRegression)
+    with pytest.raises(TypeError):
+        check_is_fitted("SVR")
+
+    ard = ARDRegression()
+    svr = SVR()
+
+    try:
+        with pytest.raises(NotFittedError):
+            check_is_fitted(ard)
+        with pytest.raises(NotFittedError):
+            check_is_fitted(svr)
+    except ValueError:
+        assert False, "check_is_fitted failed with ValueError"
+
+    # NotFittedError is a subclass of both ValueError and AttributeError
+    try:
+        check_is_fitted(ard, msg="Random message %(name)s, %(name)s")
+    except ValueError as e:
+        assert str(e) == "Random message ARDRegression, ARDRegression"
+
+    try:
+        check_is_fitted(svr, msg="Another message %(name)s, %(name)s")
+    except AttributeError as e:
+        assert str(e) == "Another message SVR, SVR"
+
+    ard.fit(*make_blobs())
+    svr.fit(*make_blobs())
+
+    assert check_is_fitted(ard) is None
+    assert check_is_fitted(svr) is None
+
+
+def test_check_is_fitted_attributes():
+    class MyEstimator():
+        def fit(self, X, y):
+            return self
+
+    msg = "not fitted"
+    est = MyEstimator()
+
+    with pytest.raises(NotFittedError, match=msg):
+        check_is_fitted(est, attributes=["a_", "b_"])
+    with pytest.raises(NotFittedError, match=msg):
+        check_is_fitted(est, attributes=["a_", "b_"], all_or_any=all)
+    with pytest.raises(NotFittedError, match=msg):
+        check_is_fitted(est, attributes=["a_", "b_"], all_or_any=any)
+
+    est.a_ = "a"
+    with pytest.raises(NotFittedError, match=msg):
+        check_is_fitted(est, attributes=["a_", "b_"])
+    with pytest.raises(NotFittedError, match=msg):
+        check_is_fitted(est, attributes=["a_", "b_"], all_or_any=all)
+    check_is_fitted(est, attributes=["a_", "b_"], all_or_any=any)
+
+    est.b_ = "b"
+    check_is_fitted(est, attributes=["a_", "b_"])
+    check_is_fitted(est, attributes=["a_", "b_"], all_or_any=all)
+    check_is_fitted(est, attributes=["a_", "b_"], all_or_any=any)
+
+
+@pytest.mark.parametrize("wrap",
+                         [itemgetter(0), list, tuple],
+                         ids=["single", "list", "tuple"])
+def test_check_is_fitted_with_attributes(wrap):
+    ard = ARDRegression()
+    with pytest.raises(NotFittedError, match="is not fitted yet"):
+        check_is_fitted(ard, wrap(["coef_"]))
+
+    ard.fit(*make_blobs())
+
+    # Does not raise
+    check_is_fitted(ard, wrap(["coef_"]))
+
+    # Raises when using attribute that is not defined
+    with pytest.raises(NotFittedError, match="is not fitted yet"):
+        check_is_fitted(ard, wrap(["coef_bad_"]))
+
+
+def test_check_consistent_length():
+    check_consistent_length([1], [2], [3], [4], [5])
+    check_consistent_length([[1, 2], [[1, 2]]], [1, 2], ['a', 'b'])
+    check_consistent_length([1], (2,), np.array([3]), sp.csr_matrix((1, 2)))
+    with pytest.raises(ValueError, match="inconsistent numbers of samples"):
+        check_consistent_length([1, 2], [1])
+    with pytest.raises(TypeError, match=r"got <\w+ 'int'>"):
+        check_consistent_length([1, 2], 1)
+    with pytest.raises(TypeError, match=r"got <\w+ 'object'>"):
+        check_consistent_length([1, 2], object())
+
+    with pytest.raises(TypeError):
+        check_consistent_length([1, 2], np.array(1))
+
+    # Despite ensembles having __len__ they must raise TypeError
+    with pytest.raises(TypeError, match="Expected sequence or array-like"):
+        check_consistent_length([1, 2], RandomForestRegressor())
+    # XXX: We should have a test with a string, but what is correct behaviour?
+
+
+def test_check_dataframe_fit_attribute():
+    # check pandas dataframe with 'fit' column does not raise error
+    # https://github.com/scikit-learn/scikit-learn/issues/8415
+    try:
+        import pandas as pd
+        X = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+        X_df = pd.DataFrame(X, columns=['a', 'b', 'fit'])
+        check_consistent_length(X_df)
+    except ImportError:
+        raise SkipTest("Pandas not found")
+
+
+def test_suppress_validation():
+    X = np.array([0, np.inf])
+    with pytest.raises(ValueError):
+        assert_all_finite(X)
+    sklearn.set_config(assume_finite=True)
+    assert_all_finite(X)
+    sklearn.set_config(assume_finite=False)
+    with pytest.raises(ValueError):
+        assert_all_finite(X)
+
+
+def test_check_array_series():
+    # regression test that check_array works on pandas Series
+    pd = importorskip("pandas")
+    res = check_array(pd.Series([1, 2, 3]), ensure_2d=False)
+    assert_array_equal(res, np.array([1, 2, 3]))
+
+    # with categorical dtype (not a numpy dtype) (GH12699)
+    s = pd.Series(['a', 'b', 'c']).astype('category')
+    res = check_array(s, dtype=None, ensure_2d=False)
+    assert_array_equal(res, np.array(['a', 'b', 'c'], dtype=object))
+
+
+def test_check_dataframe_mixed_float_dtypes():
+    # pandas dataframe will coerce a boolean into a object, this is a mismatch
+    # with np.result_type which will return a float
+    # check_array needs to explicitly check for bool dtype in a dataframe for
+    # this situation
+    # https://github.com/scikit-learn/scikit-learn/issues/15787
+
+    pd = importorskip("pandas")
+    df = pd.DataFrame({
+        'int': [1, 2, 3],
+        'float': [0, 0.1, 2.1],
+        'bool': [True, False, True]}, columns=['int', 'float', 'bool'])
+
+    array = check_array(df, dtype=(np.float64, np.float32, np.float16))
+    expected_array = np.array(
+        [[1.0, 0.0, 1.0],
+         [2.0, 0.1, 0.0],
+         [3.0, 2.1, 1.0]], dtype=float)
+    assert_allclose_dense_sparse(array, expected_array)
+
+
+class DummyMemory:
+    def cache(self, func):
+        return func
+
+
+class WrongDummyMemory:
+    pass
+
+
+@pytest.mark.filterwarnings("ignore:The 'cachedir' attribute")
+def test_check_memory():
+    memory = check_memory("cache_directory")
+    assert memory.cachedir == os.path.join('cache_directory', 'joblib')
+    memory = check_memory(None)
+    assert memory.cachedir is None
+    dummy = DummyMemory()
+    memory = check_memory(dummy)
+    assert memory is dummy
+
+    msg = "'memory' should be None, a string or have the same interface as" \
+          " joblib.Memory. Got memory='1' instead."
+    with pytest.raises(ValueError, match=msg):
+        check_memory(1)
+    dummy = WrongDummyMemory()
+    msg = "'memory' should be None, a string or have the same interface as" \
+          " joblib.Memory. Got memory='{}' instead.".format(dummy)
+    with pytest.raises(ValueError, match=msg):
+        check_memory(dummy)
+
+
+@pytest.mark.parametrize('copy', [True, False])
+def test_check_array_memmap(copy):
+    X = np.ones((4, 4))
+    with TempMemmap(X, mmap_mode='r') as X_memmap:
+        X_checked = check_array(X_memmap, copy=copy)
+        assert np.may_share_memory(X_memmap, X_checked) == (not copy)
+        assert X_checked.flags['WRITEABLE'] == copy
+
+
+@pytest.mark.parametrize('retype', [
+    np.asarray, sp.csr_matrix, sp.csc_matrix, sp.coo_matrix, sp.lil_matrix,
+    sp.bsr_matrix, sp.dok_matrix, sp.dia_matrix
+])
+def test_check_non_negative(retype):
+    A = np.array([[1, 1, 0, 0],
+                  [1, 1, 0, 0],
+                  [0, 0, 0, 0],
+                  [0, 0, 0, 0]])
+    X = retype(A)
+    check_non_negative(X, "")
+    X = retype([[0, 0], [0, 0]])
+    check_non_negative(X, "")
+
+    A[0, 0] = -1
+    X = retype(A)
+    with pytest.raises(ValueError, match="Negative "):
+        check_non_negative(X, "")
+
+
+def test_check_X_y_informative_error():
+    X = np.ones((2, 2))
+    y = None
+    with pytest.raises(ValueError, match="y cannot be None"):
+        check_X_y(X, y)
+
+
+def test_retrieve_samples_from_non_standard_shape():
+    class TestNonNumericShape:
+        def __init__(self):
+            self.shape = ("not numeric",)
+
+        def __len__(self):
+            return len([1, 2, 3])
+
+    X = TestNonNumericShape()
+    assert _num_samples(X) == len(X)
+
+    # check that it gives a good error if there's no __len__
+    class TestNoLenWeirdShape:
+        def __init__(self):
+            self.shape = ("not numeric",)
+
+    with pytest.raises(TypeError, match="Expected sequence or array-like"):
+        _num_samples(TestNoLenWeirdShape())
+
+
+@pytest.mark.parametrize('x, target_type, min_val, max_val',
+                         [(3, int, 2, 5),
+                          (2.5, float, 2, 5)])
+def test_check_scalar_valid(x, target_type, min_val, max_val):
+    """Test that check_scalar returns no error/warning if valid inputs are
+    provided"""
+    with pytest.warns(None) as record:
+        check_scalar(x, "test_name", target_type=target_type,
+                     min_val=min_val, max_val=max_val)
+    assert len(record) == 0
+
+
+@pytest.mark.parametrize('x, target_name, target_type, min_val, max_val, '
+                         'err_msg',
+                         [(1, "test_name1", float, 2, 4,
+                           TypeError("`test_name1` must be an instance of "
+                                     "<class 'float'>, not <class 'int'>.")),
+                          (1, "test_name2", int, 2, 4,
+                           ValueError('`test_name2`= 1, must be >= 2.')),
+                          (5, "test_name3", int, 2, 4,
+                           ValueError('`test_name3`= 5, must be <= 4.'))])
+def test_check_scalar_invalid(x, target_name, target_type, min_val, max_val,
+                              err_msg):
+    """Test that check_scalar returns the right error if a wrong input is
+    given"""
+    with pytest.raises(Exception) as raised_error:
+        check_scalar(x, target_name, target_type=target_type,
+                     min_val=min_val, max_val=max_val)
+    assert str(raised_error.value) == str(err_msg)
+    assert type(raised_error.value) == type(err_msg)
+
+
+_psd_cases_valid = {
+    'nominal': ((1, 2), np.array([1, 2]), None, ""),
+    'nominal_np_array': (np.array([1, 2]), np.array([1, 2]), None, ""),
+    'insignificant_imag': ((5, 5e-5j), np.array([5, 0]),
+                           PositiveSpectrumWarning,
+                           "There are imaginary parts in eigenvalues "
+                           "\\(1e\\-05 of the maximum real part"),
+    'insignificant neg': ((5, -5e-5), np.array([5, 0]),
+                          PositiveSpectrumWarning, ""),
+    'insignificant neg float32': (np.array([1, -1e-6], dtype=np.float32),
+                                  np.array([1, 0], dtype=np.float32),
+                                  PositiveSpectrumWarning,
+                                  "There are negative eigenvalues \\(1e\\-06 "
+                                  "of the maximum positive"),
+    'insignificant neg float64': (np.array([1, -1e-10], dtype=np.float64),
+                                  np.array([1, 0], dtype=np.float64),
+                                  PositiveSpectrumWarning,
+                                  "There are negative eigenvalues \\(1e\\-10 "
+                                  "of the maximum positive"),
+    'insignificant pos': ((5, 4e-12), np.array([5, 0]),
+                          PositiveSpectrumWarning,
+                          "the largest eigenvalue is more than 1e\\+12 "
+                          "times the smallest"),
+}
+
+
+@pytest.mark.parametrize("lambdas, expected_lambdas, w_type, w_msg",
+                         list(_psd_cases_valid.values()),
+                         ids=list(_psd_cases_valid.keys()))
+@pytest.mark.parametrize("enable_warnings", [True, False])
+def test_check_psd_eigenvalues_valid(lambdas, expected_lambdas, w_type, w_msg,
+                                     enable_warnings):
+    # Test that ``_check_psd_eigenvalues`` returns the right output for valid
+    # input, possibly raising the right warning
+
+    if not enable_warnings:
+        w_type = None
+        w_msg = ""
+
+    with pytest.warns(w_type, match=w_msg) as w:
+        assert_array_equal(
+            _check_psd_eigenvalues(lambdas, enable_warnings=enable_warnings),
+            expected_lambdas
+        )
+    if w_type is None:
+        assert not w
+
+
+_psd_cases_invalid = {
+    'significant_imag': ((5, 5j), ValueError,
+                         "There are significant imaginary parts in eigenv"),
+    'all negative': ((-5, -1), ValueError,
+                     "All eigenvalues are negative \\(maximum is -1"),
+    'significant neg': ((5, -1), ValueError,
+                        "There are significant negative eigenvalues"),
+    'significant neg float32': (np.array([3e-4, -2e-6], dtype=np.float32),
+                                ValueError,
+                                "There are significant negative eigenvalues"),
+    'significant neg float64': (np.array([1e-5, -2e-10], dtype=np.float64),
+                                ValueError,
+                                "There are significant negative eigenvalues"),
+}
+
+
+@pytest.mark.parametrize("lambdas, err_type, err_msg",
+                         list(_psd_cases_invalid.values()),
+                         ids=list(_psd_cases_invalid.keys()))
+def test_check_psd_eigenvalues_invalid(lambdas, err_type, err_msg):
+    # Test that ``_check_psd_eigenvalues`` raises the right error for invalid
+    # input
+
+    with pytest.raises(err_type, match=err_msg):
+        _check_psd_eigenvalues(lambdas)
+
+
+def test_check_sample_weight():
+    # check array order
+    sample_weight = np.ones(10)[::2]
+    assert not sample_weight.flags["C_CONTIGUOUS"]
+    sample_weight = _check_sample_weight(sample_weight, X=np.ones((5, 1)))
+    assert sample_weight.flags["C_CONTIGUOUS"]
+
+    # check None input
+    sample_weight = _check_sample_weight(None, X=np.ones((5, 2)))
+    assert_allclose(sample_weight, np.ones(5))
+
+    # check numbers input
+    sample_weight = _check_sample_weight(2.0, X=np.ones((5, 2)))
+    assert_allclose(sample_weight, 2 * np.ones(5))
+
+    # check wrong number of dimensions
+    with pytest.raises(ValueError,
+                       match="Sample weights must be 1D array or scalar"):
+        _check_sample_weight(np.ones((2, 4)), X=np.ones((2, 2)))
+
+    # check incorrect n_samples
+    msg = r"sample_weight.shape == \(4,\), expected \(2,\)!"
+    with pytest.raises(ValueError, match=msg):
+        _check_sample_weight(np.ones(4), X=np.ones((2, 2)))
+
+    # float32 dtype is preserved
+    X = np.ones((5, 2))
+    sample_weight = np.ones(5, dtype=np.float32)
+    sample_weight = _check_sample_weight(sample_weight, X)
+    assert sample_weight.dtype == np.float32
+
+    # int dtype will be converted to float64 instead
+    X = np.ones((5, 2), dtype=int)
+    sample_weight = _check_sample_weight(None, X, dtype=X.dtype)
+    assert sample_weight.dtype == np.float64
+
+
+@pytest.mark.parametrize("toarray", [
+    np.array, sp.csr_matrix, sp.csc_matrix])
+def test_allclose_dense_sparse_equals(toarray):
+    base = np.arange(9).reshape(3, 3)
+    x, y = toarray(base), toarray(base)
+    assert _allclose_dense_sparse(x, y)
+
+
+@pytest.mark.parametrize("toarray", [
+    np.array, sp.csr_matrix, sp.csc_matrix])
+def test_allclose_dense_sparse_not_equals(toarray):
+    base = np.arange(9).reshape(3, 3)
+    x, y = toarray(base), toarray(base + 1)
+    assert not _allclose_dense_sparse(x, y)
+
+
+@pytest.mark.parametrize("toarray", [sp.csr_matrix, sp.csc_matrix])
+def test_allclose_dense_sparse_raise(toarray):
+    x = np.arange(9).reshape(3, 3)
+    y = toarray(x + 1)
+
+    msg = ("Can only compare two sparse matrices, not a sparse matrix "
+           "and an array")
+    with pytest.raises(ValueError, match=msg):
+        _allclose_dense_sparse(x, y)
+
+
+def test_deprecate_positional_args_warns_for_function():
+
+    @_deprecate_positional_args
+    def f1(a, b, *, c=1, d=1):
+        pass
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass c=3 as keyword args"):
+        f1(1, 2, 3)
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass c=3, d=4 as keyword args"):
+        f1(1, 2, 3, 4)
+
+    @_deprecate_positional_args
+    def f2(a=1, *, b=1, c=1, d=1):
+        pass
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass b=2 as keyword args"):
+        f2(1, 2)
+
+    # The * is place before a keyword only argument without a default value
+    @_deprecate_positional_args
+    def f3(a, *, b, c=1, d=1):
+        pass
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass b=2 as keyword args"):
+        f3(1, 2)
+
+
+def test_deprecate_positional_args_warns_for_class():
+
+    class A1:
+        @_deprecate_positional_args
+        def __init__(self, a, b, *, c=1, d=1):
+            pass
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass c=3 as keyword args"):
+        A1(1, 2, 3)
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass c=3, d=4 as keyword args"):
+        A1(1, 2, 3, 4)
+
+    class A2:
+        @_deprecate_positional_args
+        def __init__(self, a=1, b=1, *, c=1, d=1):
+            pass
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass c=3 as keyword args"):
+        A2(1, 2, 3)
+
+    with pytest.warns(FutureWarning,
+                      match=r"Pass c=3, d=4 as keyword args"):
+        A2(1, 2, 3, 4)
+
+
+@pytest.mark.parametrize("indices", [None, [1, 3]])
+def test_check_fit_params(indices):
+    X = np.random.randn(4, 2)
+    fit_params = {
+        'list': [1, 2, 3, 4],
+        'array': np.array([1, 2, 3, 4]),
+        'sparse-col': sp.csc_matrix([1, 2, 3, 4]).T,
+        'sparse-row': sp.csc_matrix([1, 2, 3, 4]),
+        'scalar-int': 1,
+        'scalar-str': 'xxx',
+        'None': None,
+    }
+    result = _check_fit_params(X, fit_params, indices)
+    indices_ = indices if indices is not None else list(range(X.shape[0]))
+
+    for key in ['sparse-row', 'scalar-int', 'scalar-str', 'None']:
+        assert result[key] is fit_params[key]
+
+    assert result['list'] == _safe_indexing(fit_params['list'], indices_)
+    assert_array_equal(
+        result['array'], _safe_indexing(fit_params['array'], indices_)
+    )
+    assert_allclose_dense_sparse(
+        result['sparse-col'],
+        _safe_indexing(fit_params['sparse-col'], indices_)
+    )
+
+
+@pytest.mark.parametrize('sp_format', [True, 'csr', 'csc', 'coo', 'bsr'])
+def test_check_sparse_pandas_sp_format(sp_format):
+    # check_array converts pandas dataframe with only sparse arrays into
+    # sparse matrix
+    pd = pytest.importorskip("pandas")
+    sp_mat = _sparse_random_matrix(10, 3)
+
+    sdf = pd.DataFrame.sparse.from_spmatrix(sp_mat)
+    result = check_array(sdf, accept_sparse=sp_format)
+
+    if sp_format is True:
+        # by default pandas converts to coo when accept_sparse is True
+        sp_format = 'coo'
+
+    assert sp.issparse(result)
+    assert result.format == sp_format
+    assert_allclose_dense_sparse(sp_mat, result)
