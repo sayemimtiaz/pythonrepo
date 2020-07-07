@@ -1,6 +1,7 @@
-sequence_loss = tf.contrib.seq2seq.sequence_loss(
-    logits=outputs, targets=Y, weights=weights)
-train = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    print(i, "loss:", l, "Prediction:", ''.join(result_str))
+xy = xy[::-1] 
+for i in range(0, len(time_series) - seq_length):
+    _x = time_series[i:i + seq_length, :]
+    
+    _, step_loss = sess.run([train, loss], feed_dict={
+                                X: trainX, Y: trainY})
+ print("RMSE: {}".format(rmse_val))
