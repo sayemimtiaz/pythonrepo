@@ -1,24 +1,4 @@
-"""
-Retrain the YOLO model for your own dataset.
-"""
 
-import math
-import random
-import os
-import cv2
-
-import numpy as np
-import keras.backend as K
-from keras.layers import Input, Lambda
-from keras.models import Model
-from keras.optimizers import Adam
-from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
-import keras.layers as layers
-
-from yolo4.model import preprocess_true_boxes, yolo4_body, yolo_loss
-from yolo4.utils import get_random_data
-
-from callback_eval import Evaluate
 
 def _main():
     print('Please visit https://github.com/miemie2013/Keras-YOLOv4 for more complete model!')
