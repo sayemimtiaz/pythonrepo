@@ -1,1 +1,2 @@
-anchors = [float(x) for x in anchors.split(',')] 
+c=a.b.d[2].f()
+t=a.g
