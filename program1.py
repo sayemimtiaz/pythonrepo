@@ -1,1 +1,4 @@
-time_series[i:i + seq_length, :]
+print(q, p, p * q, sep=",")
+print >> p
+
+print "hello","there",a,a==2
