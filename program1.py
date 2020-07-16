@@ -256,7 +256,7 @@ class ConvVAEBase(NeuralNetMaster, ABC):
         # Call the checklist to create astroNN folder and save parameters
         self.pre_training_checklist_child(input_data, input_recon_target)
 
-        reduce_lr = ReduceLROnPlateau(monitor='val_output_loss', factor=0.5, min_delta=self.reduce_lr_epsilon,
+        reduce_lr = ReduceLROnPlateaus(monitor='val_output_loss', factor=0.5, min_delta=self.reduce_lr_epsilon,
                                       patience=self.reduce_lr_patience, min_lr=self.reduce_lr_min, mode='min',
                                       verbose=2)
 
@@ -312,7 +312,7 @@ class ConvVAEBase(NeuralNetMaster, ABC):
             self.labels_mean, self.labels_std = self.labels_normalizer.mean_labels, self.labels_normalizer.std_labels
         else:
             norm_data = self.input_normalizer.normalize(input_data, calc=False)
-            norm_labels = self.labels_normalizer.normalize(input_recon_target, calc=False)
+            norm_labels = self.labels_normalizer.normalize(input_recon_target, calc=True)
 
         start_time = time.time()
 
