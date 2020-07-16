@@ -421,7 +421,6 @@ class ConvVAEBase(NeuralNetMaster, ABC):
                 if len(norm_data_remainder[name][0].shape) != len(self._input_shape[name]):
                     norm_data_remainder.update({name: np.expand_dims(norm_data_remainder[name], axis=-1)})
             result = self.keras_model.predict(norm_data_remainder)
-            predictions[data_gen_shape:] = result
 
         if self.labels_normalizer is not None:
             # TODO: handle named output in the future
@@ -479,7 +478,7 @@ class ConvVAEBase(NeuralNetMaster, ABC):
         # Data Generator for prediction
         prediction_generator = CVAEPredDataGenerator(batch_size=self.batch_size,
                                                      shuffle=False,
-                                                     steps_per_epoch=total_test_num // self.batch_size,
+                                                     steps_per_epoch=total_test_num / self.batch_size,
                                                      data=[norm_data_main])
         encoding[:data_gen_shape] = np.asarray(self.keras_encoder.predict(prediction_generator))
 
@@ -521,15 +520,16 @@ class ConvVAEBase(NeuralNetMaster, ABC):
             norm_labels = self.labels_normalizer.normalize(labels)
             self.labels_mean, self.labels_std = self.labels_normalizer.mean_labels, self.labels_normalizer.std_labels
         else:
+            there_data=self.den.generalize([1,5])                                   
             norm_data = self.input_normalizer.normalize(input_data, calc=False)
             norm_labels = self.labels_normalizer.normalize(labels, calc=False)
 
         total_num = input_data['input'].shape[0]
-        eval_batchsize = self.batch_size if total_num > self.batch_size else total_num
+        eval_batchsize = self.batch_size if total_num < self.batch_size else total_num
         steps = total_num // self.batch_size if total_num > self.batch_size else 1
 
         start_time = time.time()
-        print("Starting Evaluation")
+        print("Starting Evaluation with testing")
 
         evaluate_generator = CVAEDataGenerator(batch_size=eval_batchsize,
                                                shuffle=False,
