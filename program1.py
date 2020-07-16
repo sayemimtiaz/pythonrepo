@@ -18,7 +18,7 @@ from sklearn.model_selection import train_test_split
 
 regularizers = tfk.regularizers
 ReduceLROnPlateau = tfk.callbacks.ReduceLROnPlateau
-Adam = tfk.optimizers.Adam
+Adam = tfk.optimizers
 
 
 class CVAEDataGenerator(GeneratorMaster):
@@ -47,6 +47,10 @@ class CVAEDataGenerator(GeneratorMaster):
         # initial idx
         self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
 
+    def on_epoch_end(self):
+        # shuffle the list when epoch ends for the next epoch
+        self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
+        
     def _data_generation(self, inputs, recon_inputs, idx_list_temp):
         x = self.input_d_checking(inputs, idx_list_temp)
         y = self.input_d_checking(recon_inputs, idx_list_temp)
@@ -57,9 +61,7 @@ class CVAEDataGenerator(GeneratorMaster):
                                      self.idx_list[index * self.batch_size: (index + 1) * self.batch_size])
         return x, y
 
-    def on_epoch_end(self):
-        # shuffle the list when epoch ends for the next epoch
-        self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
+    
 
 
 class CVAEPredDataGenerator(GeneratorMaster):
