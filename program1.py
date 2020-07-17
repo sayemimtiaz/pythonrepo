@@ -1,548 +1,694 @@
-import json
+# Copyright 2019 Yelp
+# Copyright 2020 Yelp
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""A Spark script that can run a MRJob without Hadoop."""
 import os
-import time
-from abc import ABC
+import sys
+import json
+from argparse import ArgumentParser
+from collections import defaultdict
+from importlib import import_module
+from itertools import chain
 
-import numpy as np
-import tensorflow.keras as tfk
-from astroNN.config import MULTIPROCESS_FLAG
-from astroNN.config import _astroNN_MODEL_NAME
-from astroNN.datasets import H5Loader
-from astroNN.models.base_master_nn import NeuralNetMaster
-from astroNN.nn.callbacks import VirutalCSVLogger
-from astroNN.nn.losses import mean_squared_error, mean_error, mean_absolute_error
-from astroNN.nn.utilities import Normalizer
-from astroNN.nn.utilities.generator import GeneratorMaster
-from astroNN.shared.dict_tools import dict_np_to_dict_list, list_to_dict
-from sklearn.model_selection import train_test_split
-
-regularizers = tfk.regularizers
-ReduceLROnPlateau = tfk.callbacks.ReduceLROnPlateau
-Adam = tfk.optimizers
+from mrjob.parse import is_uri
+from mrjob.util import shlex_split
+from pyspark.accumulators import AccumulatorParam
 
 
-class CVAEDataGenerator(GeneratorMaster):
-    """
-    To generate data to NN
+# tuples of (args, kwargs) for ArgumentParser.add_argument()
+#
+# TODO: this is shared code with mr_spark_harness.py, which started out
+# in this directory but has since been moved to tests/. Totally fine to
+# inline this stuff and reduplicate it in mr_spark_harness.py
+_PASSTHRU_OPTIONS = [
+    (['--job-args'], dict(
+        default=None,
+        dest='job_args',
+        help=('The arguments pass to the MRJob. Please quote all passthru args'
+              ' so that they are in the same string'),
+    )),
+    (['--first-step-num'], dict(
+        default=None,
+        dest='first_step_num',
+        type=int,
+        help=("(0-indexed) first step in range of steps to run")
+    )),
+    (['--last-step-num'], dict(
+        default=None,
+        dest='last_step_num',
+        type=int,
+        help=("(0-indexed) last step in range of steps to run")
+    )),
+    (['--compression-codec'], dict(
+        default=None,
+        dest='compression_codec',
+        help=('Java class path of a codec to use to compress output.'),
+    )),
+    (['--counter-output-dir'], dict(
+        default=None,
+        dest='counter_output_dir',
+        help=(
+            'An empty directory to write counter output to. '
+            'Can be a path or URI.')
+    )),
+    (['--num-reducers'], dict(
+        default=None,
+        dest='num_reducers',
+        type=int,
+        help=('Set number of reducers (and thus number of output files)')
+    )),
+    # switches to deal with jobs that can't be instantiated in the Spark
+    # driver (e.g. because of problems with file upload args). See #2044
+    (['--steps-desc'], dict(
+        default=None,
+        dest='steps_desc',
+        help=("Description of job's steps, in JSON format (otherwise,"
+              " we'll instantiate a job and ask it"),
+    )),
+    (['--hadoop-input-format'], dict(
+        default=None,
+        dest='hadoop_input_format',
+        help=("Hadoop input format class. Set to '' to indicate no"
+              " format (otherwise we'll instantiate a job and ask it"),
+    )),
+    (['--no-hadoop-input-format'], dict(
+        action='store_const',
+        const='',
+        default=None,
+        dest='hadoop_input_format',
+        help=("Alternate way to specify no Hadoop input format class."),
+    )),
+    (['--hadoop-output-format'], dict(
+        default=None,
+        dest='hadoop_output_format',
+        help=("Hadoop output format class. Set to '' to indicate no"
+              " format (otherwise we'll instantiate a job and ask it"),
+    )),
+    (['--no-hadoop-output-format'], dict(
+        action='store_const',
+        const='',
+        default=None,
+        dest='hadoop_output_format',
+        help=("Alternate way to specify no Hadoop output format class."),
+    )),
+    (['--sort-values'], dict(
+        action='store_true',
+        default=None,
+        dest='sort_values',
+    )),
+    (['--no-sort-values'], dict(
+        action='store_false',
+        default=None,
+        dest='sort_values',
+    )),
+]
 
-    :param batch_size: batch size
-    :type batch_size: int
-    :param shuffle: Whether to shuffle batches or not
-    :type shuffle: bool
-    :param data: List of data to NN
-    :type data: list
-    :param manual_reset: Whether need to reset the generator manually, usually it is handled by tensorflow
-    :type manual_reset: bool
-    :History:
-        | 2017-Dec-02 - Written - Henry Leung (University of Toronto)
-        | 2019-Feb-17 - Updated - Henry Leung (University of Toronto)
-    """
 
-    def __init__(self, batch_size, shuffle, steps_per_epoch, data, manual_reset=False):
-        super().__init__(batch_size=batch_size, shuffle=shuffle, steps_per_epoch=steps_per_epoch, data=data,
-                         manual_reset=manual_reset)
-        self.inputs = self.data[0]
-        self.recon_inputs = self.data[1]
-
-        # initial idx
-        self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
-
-    def on_epoch_end(self):
-        # shuffle the list when epoch ends for the next epoch
-        self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
-        
-    def _data_generation(self, inputs, recon_inputs, idx_list_temp):
-        x = self.input_d_checking(inputs, idx_list_temp)
-        y = self.input_d_checking(recon_inputs, idx_list_temp)
-        return x, y
-
-    def __getitem__(self, index):
-        x, y = self._data_generation(self.inputs, self.recon_inputs,
-                                     self.idx_list[index * self.batch_size: (index + 1) * self.batch_size])
-        return x, y
-
-    
+# Used to implement skip_internal_protocol
+# internal_protocol() method. pick_protocols() just expects a thing with
+# *read* and *write* attributes, and a class is the simplest way to get it.
+# The harness has special cases for when *read* or *write* is ``None``.
+class _NO_INTERNAL_PROTOCOL(object):
+    read = None
+    write = None
 
 
-class CVAEPredDataGenerator(GeneratorMaster):
-    """
-    To generate data to NN for prediction
+class CounterAccumulator(AccumulatorParam):
 
-    :param batch_size: batch size
-    :type batch_size: int
-    :param shuffle: Whether to shuffle batches or not
-    :type shuffle: bool
-    :param data: List of data to NN
-    :type data: list
-    :param manual_reset: Whether need to reset the generator manually, usually it is handled by tensorflow
-    :type manual_reset: bool
-    :History:
-        | 2017-Dec-02 - Written - Henry Leung (University of Toronto)
-        | 2019-Feb-17 - Updated - Henry Leung (University of Toronto)
-    """
+    def zero(self, value):
+        return value
 
-    def __init__(self, batch_size, shuffle, steps_per_epoch, data, manual_reset=True):
-        super().__init__(batch_size=batch_size, shuffle=shuffle, steps_per_epoch=steps_per_epoch, data=data,
-                         manual_reset=manual_reset)
-        self.inputs = self.data[0]
-
-        # initial idx
-        self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
-
-    def _data_generation(self, inputs, idx_list_temp):
-        # Generate data
-        x = self.input_d_checking(inputs, idx_list_temp)
-        return x
-
-    def __getitem__(self, index):
-        x = self._data_generation(self.inputs, self.idx_list[index * self.batch_size: (index + 1) * self.batch_size])
-        return x
-
-    def on_epoch_end(self):
-        # shuffle the list when epoch ends for the next epoch
-        self.idx_list = self._get_exploration_order(range(self.inputs['input'].shape[0]))
+    def addInPlace(self, value1, value2):
+        for group in value2:
+            for key in value2[group]:
+                if key not in value1[group]:
+                    value1[group][key] = value2[group][key]
+                else:
+                    value1[group][key] += value2[group][key]
+        return value1
 
 
-class ConvVAEBase(NeuralNetMaster, ABC):
-    """
-    Top-level class for a Convolutional Variational Autoencoder
+def main(cmd_line_args=None):
+    if cmd_line_args is None:
+        cmd_line_args = sys.argv[1:]
 
-    :History: 2018-Jan-06 - Written - Henry Leung (University of Toronto)
-    """
+    parser = _make_arg_parser()
+    args = parser.parse_args(cmd_line_args)
 
-    def __init__(self):
-        super().__init__()
-        self.name = 'Convolutional Variational Autoencoder'
-        self._model_type = 'CVAE'
-        self.initializer = None
-        self.activation = None
-        self._last_layer_activation = None
-        self.num_filters = None
-        self.filter_len = None
-        self.pool_length = None
-        self.num_hidden = None
-        self.reduce_lr_epsilon = None
-        self.reduce_lr_min = None
-        self.reduce_lr_patience = None
-        self.l1 = None
-        self.l2 = None
-        self.maxnorm = None
-        self.latent_dim = None
-        self.val_size = 0.1
-        self.dropout_rate = 0.0
+    if args.num_reducers is not None and args.num_reducers <= 0:
+        raise ValueError(
+            'You can only configure num_reducers to positive number.')
 
-        self.keras_vae = None
-        self.keras_encoder = None
-        self.keras_decoder = None
-        self.loss = None
+    # get job_class
+    job_module_name, job_class_name = args.job_class.rsplit('.', 1)
+    job_module = import_module(job_module_name)
+    job_class = getattr(job_module, job_class_name)
 
-        self._input_shape = None
+    # load initial data
+    from pyspark import SparkContext
 
-        self.input_norm_mode = 255
-        self.labels_norm_mode = 255
-        self.input_mean = None
-        self.input_std = None
-        self.labels_mean = None
-        self.labels_std = None
+    if args.job_args:
+        job_args = shlex_split(args.job_args)
+    else:
+        job_args = []
 
-    def compile(self,
-                optimizer=None,
-                loss=None,
-                metrics=None,
-                weighted_metrics=None,
-                loss_weights=None,
-                sample_weight_mode=None):
-        self.keras_model, self.keras_encoder, self.keras_decoder = self.model()
+    # determine hadoop_*_format, steps
+    # try to avoid instantiating a job in the driver; see #2044
+    job = None
 
-        if optimizer is not None:
-            self.optimizer = optimizer
-        elif self.optimizer is None or self.optimizer == 'adam':
-            self.optimizer = Adam(lr=self.lr, beta_1=self.beta_1, beta_2=self.beta_2, epsilon=self.optimizer_epsilon,
-                                  decay=0.0)
-        if metrics is not None:
-            self.metrics = metrics
-        self.loss = mean_squared_error if not (loss and self.loss) else loss
-        self.metrics = [mean_absolute_error, mean_error] if not self.metrics else self.metrics
+    if args.hadoop_input_format is None:
+        job = job or job_class(job_args)
+        hadoop_input_format = job.hadoop_input_format()
+    else:
+        hadoop_input_format = args.hadoop_input_format or None
 
-        self.keras_model.compile(loss=self.loss,
-                                 optimizer=self.optimizer,
-                                 metrics=self.metrics,
-                                 weighted_metrics=weighted_metrics,
-                                 loss_weights=loss_weights,
-                                 sample_weight_mode=sample_weight_mode)
+    if args.hadoop_output_format is None:
+        job = job or job_class(job_args)
+        hadoop_output_format = job.hadoop_output_format()
+    else:
+        hadoop_output_format = args.hadoop_output_format or None
 
-        # inject custom training step if needed
-        try:
-            self.custom_train_step()
-        except NotImplementedError:
-            pass
-        except TypeError:
-            self.keras_model.train_step = self.custom_train_step
+    if args.sort_values is None:
+        job = job or job_class(job_args)
+        sort_values = job.sort_values()
+    else:
+        sort_values = args.sort_values
 
-        return None
+    if args.steps_desc is None:
+        job = job or job_class(job_args)
+        steps = [step.description(step_num)
+                 for step_num, step in enumerate(job.steps())]
+    else:
+        steps = json.loads(args.steps_desc)
 
-    def pre_training_checklist_child(self, input_data, input_recon_target):
-        if self.task == 'classification':
-            raise RuntimeError('astroNN VAE does not support classification task')
-        elif self.task == 'binary_classification':
-            raise RuntimeError('astroNN VAE does not support binary classification task')
+    # pick steps
+    start = args.first_step_num or 0
+    end = None if args.last_step_num is None else args.last_step_num + 1
+    steps_to_run = list(enumerate(steps))[start:end]
 
-        input_data, input_recon_target = self.pre_training_checklist_master(input_data, input_recon_target)
+    sc = SparkContext()
 
-        if isinstance(input_data, H5Loader):
-            self.targetname = input_data.target
-            input_data, input_recon_target = input_data.load()
+    # keep track of one set of counters per job step
+    counter_accumulators = [
+        sc.accumulator(defaultdict(dict), CounterAccumulator())
+        for _ in steps_to_run
+    ]
 
-        # check if exists (existing means the model has already been trained (e.g. fine-tuning), so we do not need calculate mean/std again)
-        if self.input_normalizer is None:
-            self.input_normalizer = Normalizer(mode=self.input_norm_mode)
-            self.labels_normalizer = Normalizer(mode=self.labels_norm_mode)
+    def make_increment_counter(step_num):
+        counter_accumulator = counter_accumulators[step_num - start]
 
-            norm_data = self.input_normalizer.normalize(input_data)
-            self.input_mean, self.input_std = self.input_normalizer.mean_labels, self.input_normalizer.std_labels
-            norm_labels = self.labels_normalizer.normalize(input_recon_target)
-            self.labels_mean, self.labels_std = self.labels_normalizer.mean_labels, self.labels_normalizer.std_labels
+        def increment_counter(group, counter, amount=1):
+            counter_accumulator.add({group: {counter: amount}})
+
+        return increment_counter
+
+    def make_mrc_job(mrc, step_num):
+        j = job_class(job_args + [
+            '--%s' % mrc, '--step-num=%d' % step_num
+        ])
+
+        # patch increment_counter() to update the accumulator for this step
+        j.increment_counter = make_increment_counter(step_num)
+
+        # if skip_internal_protocol is true, patch internal_protocol() to
+        # return an object whose *read* and *write* attributes are ``None``
+        if args.skip_internal_protocol:
+            j.internal_protocol = lambda: _NO_INTERNAL_PROTOCOL
+
+        return j
+
+    # --emulate-map-input-file doesn't work with hadoop_input_format
+    emulate_map_input_file = (
+        args.emulate_map_input_file and not hadoop_input_format)
+
+    try:
+        if emulate_map_input_file:
+            # load an rdd with pairs of (input_path, line). *path* here
+            # has to be a single path, not a comma-separated list
+            rdd = sc.union([_text_file_with_path(sc, path)
+                            for path in args.input_path.split(',')])
+
+        elif hadoop_input_format:
+            rdd = sc.hadoopFile(
+                args.input_path,
+                inputFormatClass=hadoop_input_format,
+                keyClass='org.apache.hadoop.io.Text',
+                valueClass='org.apache.hadoop.io.Text')
+
+            # hadoopFile loads each line as a key-value pair in which the
+            # contents of the line are the key and the value is an empty
+            # string. Convert to an rdd of just lines, encoded as bytes.
+            rdd = rdd.map(lambda kv: kv[0].encode('utf-8'))
+
         else:
-            norm_data = self.input_normalizer.normalize(input_data, calc=False)
-            norm_labels = self.labels_normalizer.normalize(input_recon_target, calc=False)
+            rdd = sc.textFile(args.input_path, use_unicode=False)
 
-        if self.keras_model is None:  # only compile if there is no keras_model, e.g. fine-tuning does not required
-            self.compile()
+        # run steps
+        for step_num, step in steps_to_run:
+            rdd = _run_step(
+                step, step_num, rdd,
+                make_mrc_job,
+                args.num_reducers, sort_values,
+                emulate_map_input_file,
+                args.skip_internal_protocol)
 
-        self.train_idx, self.val_idx = train_test_split(np.arange(self.num_train + self.val_num),
-                                                        test_size=self.val_size)
+        # max_output_files: limit number of partitions
+        if args.max_output_files:
+            rdd = rdd.coalesce(args.max_output_files)
 
-        norm_data_training = {}
-        norm_data_val = {}
-        norm_labels_training = {}
-        norm_labels_val = {}
-        for name in norm_data.keys():
-            norm_data_training.update({name: norm_data[name][self.train_idx]})
-            norm_data_val.update({name: norm_data[name][self.val_idx]})
-        for name in norm_labels.keys():
-            norm_labels_training.update({name: norm_labels[name][self.train_idx]})
-            norm_labels_val.update({name: norm_labels[name][self.val_idx]})
+        # write the results
+        if hadoop_output_format:
+            # saveAsHadoopFile takes an rdd of key-value pairs, so convert to
+            # that format
+            rdd = rdd.map(lambda line: tuple(
+                x.decode('utf-8') for x in line.split(b'\t', 1)))
+            rdd.saveAsHadoopFile(
+                args.output_path,
+                outputFormatClass=hadoop_output_format,
+                compressionCodecClass=args.compression_codec)
+        else:
+            rdd.saveAsTextFile(
+                args.output_path, compressionCodecClass=args.compression_codec)
+    finally:
+        if args.counter_output_dir is not None:
+            counters = [ca.value for ca in counter_accumulators]
 
-        self.training_generator = CVAEDataGenerator(batch_size=self.batch_size,
-                                                    shuffle=True,
-                                                    steps_per_epoch=self.num_train // self.batch_size,
-                                                    data=[norm_data_training,
-                                                          norm_labels_training],
-                                                    manual_reset=False)
-
-        val_batchsize = self.batch_size if len(self.val_idx) > self.batch_size else len(self.val_idx)
-        self.validation_generator = CVAEDataGenerator(batch_size=val_batchsize,
-                                                      shuffle=True,
-                                                      steps_per_epoch=max(self.val_num // self.batch_size, 1),
-                                                      data=[norm_data_val,
-                                                            norm_labels_val],
-                                                      manual_reset=True)
-
-        return input_data, input_recon_target
-
-    def train(self, input_data, input_recon_target):
-        """
-        Train a Convolutional Autoencoder
-
-        :param input_data: Data to be trained with neural network
-        :type input_data: ndarray
-        :param input_recon_target: Data to be reconstructed
-        :type input_recon_target: ndarray
-        :return: None
-        :rtype: NoneType
-        :History: 2017-Dec-06 - Written - Henry Leung (University of Toronto)
-        """
-
-        # Call the checklist to create astroNN folder and save parameters
-        self.pre_training_checklist_child(input_data, input_recon_target)
-
-        reduce_lr = ReduceLROnPlateaus(monitor='val_output_loss', factor=0.5, min_delta=self.reduce_lr_epsilon,
-                                      patience=self.reduce_lr_patience, min_lr=self.reduce_lr_min, mode='min',
-                                      verbose=2)
-
-        self.virtual_cvslogger = VirutalCSVLogger()
-
-        self.__callbacks = [reduce_lr, self.virtual_cvslogger]  # default must have unchangeable callbacks
-
-        if self.callbacks is not None:
-            if isinstance(self.callbacks, list):
-                self.__callbacks.extend(self.callbacks)
+            # If the given path is an s3 path, use s3.parallelize,
+            # otherwise just write them directly to the local dir
+            if is_uri(args.counter_output_dir):
+                sc.parallelize(
+                    [json.dumps(counters)],
+                    numSlices=1
+                ).saveAsTextFile(
+                    args.counter_output_dir
+                )
             else:
-                self.__callbacks.append(self.callbacks)
+                # Use regular python built-in file writer if the part-* file
+                # is not created
+                path = os.path.join(args.counter_output_dir, "part-00000")
+                if not os.path.exists(args.counter_output_dir):
+                    os.mkdir(args.counter_output_dir)
+                with open(path, 'w') as wb:
+                    wb.write(str(json.dumps(counters)))
 
-        start_time = time.time()
 
-        self.keras_model.fit(self.training_generator,
-                             validation_data=self.validation_generator,
-                             epochs=self.max_epochs, verbose=self.verbose, workers=os.cpu_count(),
-                             callbacks=self.__callbacks,
-                             use_multiprocessing=MULTIPROCESS_FLAG)
+def _text_file_with_path(sc, path):
+    """Return an RDD that yields (path, line) for each line in the file.
 
-        print(f'Completed Training, {(time.time() - start_time):.{2}f}s in total')
+    *path* must be a single path, not a comma-separated list of paths
+    """
+    from pyspark.sql import SparkSession
+    from pyspark.sql import functions as F
 
-        if self.autosave is True:
-            # Call the post training checklist to save parameters
-            self.save()
+    spark = SparkSession(sc)
 
-        return None
+    df = spark.read.text(path).select([
+        F.input_file_name().alias('input_file_name'),
+        F.col('value')
+    ])
 
-    def train_on_batch(self, input_data, input_recon_target):
-        """
-        Train a AutoEncoder by running a single gradient update on all of your data, suitable for fine-tuning
+    return df.rdd.map(
+        lambda row: (row.input_file_name,
+                     (row.value if isinstance(row.value, bytes)
+                      else row.value.encode('utf_8')))
+    )
 
-        :param input_data: Data to be trained with neural network
-        :type input_data: ndarray
-        :param input_recon_target: Data to be reconstructed
-        :type input_recon_target: ndarray
-        :return: None
-        :rtype: NoneType
-        :History: 2018-Aug-25 - Written - Henry Leung (University of Toronto)
-        """
 
-        input_data, input_recon_target = self.pre_training_checklist_master(input_data, input_recon_target)
+def _run_step(
+        step, step_num, rdd, make_mrc_job,
+        num_reducers=None, sort_values=None,
+        emulate_map_input_file=False,
+        skip_internal_protocol=False):
+    """Run the given step on the RDD and return the transformed RDD."""
+    _check_step(step, step_num)
 
-        # check if exists (existing means the model has already been trained (e.g. fine-tuning), so we do not need calculate mean/std again)
-        if self.input_normalizer is None:
-            self.input_normalizer = Normalizer(mode=self.input_norm_mode)
-            self.labels_normalizer = Normalizer(mode=self.labels_norm_mode)
+    # we try to avoid initializing job instances here in the driver (see #2044
+    # for why). However, while we can get away with initializing one instance
+    # per partition in the mapper and reducer, that would be too inefficient
+    # for combiners, which run on *two* key-value pairs at a time.
+    #
+    # but combiners are optional! if we can't initialize a combiner job
+    # instance, we can just skip it!
 
-            norm_data = self.input_normalizer.normalize(input_data)
-            self.input_mean, self.input_std = self.input_normalizer.mean_labels, self.input_normalizer.std_labels
-            norm_labels = self.labels_normalizer.normalize(input_recon_target)
-            self.labels_mean, self.labels_std = self.labels_normalizer.mean_labels, self.labels_normalizer.std_labels
+    # mapper
+    if step.get('mapper'):
+        rdd_includes_input_path = (emulate_map_input_file and step_num == 0)
+
+        rdd = _run_mapper(
+            make_mrc_job, step_num, rdd, rdd_includes_input_path)
+
+    # combiner/shuffle-and-sort
+    combiner_job = None
+    if step.get('combiner'):
+        try:
+            _check_substep(step, step_num, 'combiner')
+            combiner_job = make_mrc_job('combiner', step_num)
+        except Exception:
+            # if combiner needs to run subprocesses, or we can't
+            # initialize a job instance, just skip combiners
+            pass
+
+    if combiner_job:
+        # _run_combiner() includes shuffle-and-sort
+        rdd = _run_combiner(
+            combiner_job, rdd,
+            sort_values=sort_values,
+            num_reducers=num_reducers)
+    elif step.get('reducer'):
+        rdd = _shuffle_and_sort(
+            rdd, sort_values=sort_values, num_reducers=num_reducers,
+            skip_internal_protocol=skip_internal_protocol)
+
+    # reducer
+    if step.get('reducer'):
+        rdd = _run_reducer(
+            make_mrc_job, step_num, rdd, num_reducers=num_reducers)
+
+    return rdd
+
+
+def _run_mapper(make_mrc_job, step_num, rdd, rdd_includes_input_path):
+    """Run our job's mapper.
+
+    :param make_mrc_job: an instance of our job, instantiated to be the mapper
+                         for the step we wish to run
+    :param rdd: an RDD containing lines representing encoded key-value pairs
+    :param rdd_includes_input_path: if true, rdd contains pairs of
+                                    (input_file_path, line). set
+                                    $mapreduce_map_input_file to
+                                    *input_file_path*.
+    :return: an RDD containing lines representing encoded key-value pairs
+    """
+    # initialize job class inside mapPartitions(). this deals with jobs that
+    # can't be initialized in the Spark driver (see #2044)
+
+    def map_lines(lines):
+        job = make_mrc_job('mapper', step_num)
+
+        read, write = job.pick_protocols(step_num, 'mapper')
+
+        if rdd_includes_input_path:
+            # rdd actually contains pairs of (input_path, line), convert
+            path_line_pairs = lines
+
+            # emulate the mapreduce.map.input.file config property
+            # set in Hadoop
+            #
+            # do this first so that mapper_init() etc. will work.
+            # we can assume *rdd* contains at least one record.
+            input_path, first_line = next(path_line_pairs)
+            os.environ['mapreduce_map_input_file'] = input_path
+
+            # reconstruct *lines* (without dumping to memory)
+            lines = chain([first_line], (line for _, line in path_line_pairs))
+
+        # decode lines into key-value pairs (as a generator, not a list)
+        #
+        # line -> (k, v)
+        if read:
+            pairs = (read(line) for line in lines)
         else:
-            norm_data = self.input_normalizer.normalize(input_data, calc=False)
-            norm_labels = self.labels_normalizer.normalize(input_recon_target, calc=True)
+            pairs = lines  # was never encoded
 
-        start_time = time.time()
+        # reduce_pairs() runs key-value pairs through mapper
+        #
+        # (k, v), ... -> (k, v), ...
+        for k, v in job.map_pairs(pairs, step_num):
+            # encode key-value pairs back into lines
+            #
+            # (k, v) -> line
+            if write:
+                yield write(k, v)
+            else:
+                yield k, v
 
-        fit_generator = CVAEDataGenerator(batch_size=input_data['input'].shape[0],
-                                          shuffle=False,
-                                          steps_per_epoch=1,
-                                          data=[norm_data,
-                                                norm_labels])
+    return rdd.mapPartitions(map_lines)
 
-        scores = self.keras_model.fit(fit_generator,
-                                      epochs=1,
-                                      verbose=self.verbose,
-                                      workers=os.cpu_count(),
-                                      use_multiprocessing=MULTIPROCESS_FLAG)
 
-        print(f'Completed Training on Batch, {(time.time() - start_time):.{2}f}s in total')
+def _run_combiner(combiner_job, rdd, sort_values=False, num_reducers=None):
+    """Run our job's combiner, and group lines with the same key together.
 
-        return None
+    :param combiner_job: an instance of our job, instantiated to be the mapper
+                         for the step we wish to run
+    :param rdd: an RDD containing lines representing encoded key-value pairs
+    :param sort_values: if true, ensure all lines corresponding to a given key
+                        are sorted (by their encoded value)
+    :param num_reducers: limit the number of paratitions of output rdd, which
+                         is similar to mrjob's limit on number of reducers.
+    :return: an RDD containing "reducer ready" lines representing encoded
+             key-value pairs, that is, where all lines with the same key are
+             adjacent and in the same partition
+    """
+    step_num = combiner_job.options.step_num
 
-    def post_training_checklist_child(self):
-        self.keras_model.save(self.fullfilepath + _astroNN_MODEL_NAME)
-        print(_astroNN_MODEL_NAME + f' saved to {(self.fullfilepath + _astroNN_MODEL_NAME)}')
+    c_read, c_write = combiner_job.pick_protocols(step_num, 'combiner')
 
-        self.hyper_txt.write(f"Dropout Rate: {self.dropout_rate} \n")
-        self.hyper_txt.flush()
-        self.hyper_txt.close()
+    # decode lines into key-value pairs
+    #
+    # line -> (k, v)
+    if c_read:
+        rdd = rdd.map(c_read)
 
-        data = {'id': self.__class__.__name__,
-                'pool_length': self.pool_length,
-                'filterlen': self.filter_len,
-                'filternum': self.num_filters,
-                'hidden': self.num_hidden,
-                'input': self._input_shape,
-                'labels': self._labels_shape,
-                'task': self.task,
-                'activation': self.activation,
-                'input_mean': dict_np_to_dict_list(self.input_mean),
-                'labels_mean': dict_np_to_dict_list(self.labels_mean),
-                'input_std': dict_np_to_dict_list(self.input_std),
-                'labels_std': dict_np_to_dict_list(self.labels_std),
-                'valsize': self.val_size,
-                'targetname': self.targetname,
-                'dropout_rate': self.dropout_rate,
-                'l1': self.l1, 'l2': self.l2,
-                'maxnorm': self.maxnorm,
-                'input_norm_mode': self.input_normalizer.normalization_mode,
-                'labels_norm_mode': self.labels_normalizer.normalization_mode,
-                'batch_size': self.batch_size,
-                'latent': self.latent_dim}
-
-        with open(self.fullfilepath + '/astroNN_model_parameter.json', 'w') as f:
-            json.dump(data, f, indent=4, sort_keys=True)
-
-    def test(self, input_data):
-        """
-        Use the neural network to do inference and get reconstructed data
-
-        :param input_data: Data to be inferred with neural network
-        :type input_data: ndarray
-        :return: reconstructed data
-        :rtype: ndarry
-        :History: 2017-Dec-06 - Written - Henry Leung (University of Toronto)
-        """
-        input_data = self.pre_testing_checklist_master(input_data)
-
-        if self.input_normalizer is not None:
-            input_array = self.input_normalizer.normalize(input_data, calc=False)
+    # The common case for MRJob combiners is to yield a single key-value pair
+    # (for example ``(key, sum(values))``. If the combiner does something
+    # else, just build a list of values so we don't end up running multiple
+    # values through the MRJob's combiner multiple times.
+    def combiner_helper(pairs1, pairs2):
+        if len(pairs1) == len(pairs2) == 1:
+            return list(
+                combiner_job.combine_pairs(pairs1 + pairs2, step_num),
+            )
         else:
-            # Prevent shallow copy issue
-            input_array = np.array(input_data)
-            input_array -= self.input_mean
-            input_array /= self.input_std
+            pairs1.extend(pairs2)
+            return pairs1
 
-        total_test_num = input_data['input'].shape[0]  # Number of testing data
+    # include key in "value", so MRJob combiner can see it
+    #
+    # (k, v) -> (k, (k, v))
+    rdd = rdd.map(lambda k_v: (k_v[0], k_v))
 
-        # for number of training data smaller than batch_size
-        if total_test_num < self.batch_size:
-            self.batch_size = total_test_num
+    # :py:meth:`pyspark.RDD.combineByKey()`, where the magic happens.
+    #
+    # (k, (k, v)), ... -> (k, ([(k, v1), (k, v2), ...]))
+    #
+    # Our "values" are key-value pairs, and our "combined values" are lists of
+    # key-value pairs (single-item lists in the common case).
+    #
+    # note that unlike Hadoop combiners, combineByKey() sees *all* the
+    # key-value pairs, essentially doing a shuffle-and-sort for free.
+    rdd = rdd.combineByKey(
+        createCombiner=lambda k_v: [k_v],
+        mergeValue=lambda k_v_list, k_v: combiner_helper(k_v_list, [k_v]),
+        mergeCombiners=combiner_helper,
+        numPartitions=num_reducers
+    )
 
-        # Due to the nature of how generator works, no overlapped prediction
-        data_gen_shape = (total_test_num // self.batch_size) * self.batch_size
-        remainder_shape = total_test_num - data_gen_shape  # Remainder from generator
+    # encode lists of key-value pairs into lists of lines
+    #
+    # (k, [(k, v1), (k, v2), ...]) -> (k, [line1, line2, ...])
+    if c_write:
+        rdd = rdd.mapValues(
+            lambda pairs: [c_write(*pair) for pair in pairs])
 
-        predictions = np.zeros((total_test_num, self._labels_shape['output'], 1))
+    # free the lines!
+    #
+    # (k, [line1, line2, ...]) -> line1, line2, ...
+    rdd = _discard_key_and_flatten_values(rdd, sort_values=sort_values)
 
-        norm_data_main = {}
-        norm_data_remainder = {}
-        for name in input_array.keys():
-            norm_data_main.update({name: input_array[name][:data_gen_shape]})
-            norm_data_remainder.update({name: input_array[name][data_gen_shape:]})
+    return rdd
 
-        start_time = time.time()
-        print("Starting Inference")
 
-        # Data Generator for prediction
-        prediction_generator = CVAEPredDataGenerator(batch_size=self.batch_size,
-                                                     shuffle=False,
-                                                     steps_per_epoch=total_test_num // self.batch_size,
-                                                     data=[norm_data_main])
-        predictions[:data_gen_shape] = np.asarray(self.keras_model.predict(
-            prediction_generator))
+def _shuffle_and_sort(
+        rdd, sort_values=False, num_reducers=None,
+        skip_internal_protocol=False):
+    """Simulate Hadoop's shuffle-and-sort step, so that data will be in the
+    format the reducer expects.
 
-        if remainder_shape != 0:
-            # assume its caused by mono images, so need to expand dim by 1
-            for name in input_array.keys():
-                if len(norm_data_remainder[name][0].shape) != len(self._input_shape[name]):
-                    norm_data_remainder.update({name: np.expand_dims(norm_data_remainder[name], axis=-1)})
-            result = self.keras_model.predict(norm_data_remainder)
+    :param rdd: an RDD containing lines representing encoded key-value pairs,
+                where the encoded key comes first and is followed by a TAB
+                character (the encoded key may not contain TAB).
+    :param sort_values: if true, ensure all lines corresponding to a given key
+                        are sorted (by their encoded value)
+    :param num_reducers: limit the number of paratitions of output rdd, which
+                         is similar to mrjob's limit on number of reducers.
+    :param skip_internal_protocol: if true, assume *rdd* contains key/value
+                                   pairs, not lines
 
-        if self.labels_normalizer is not None:
-            # TODO: handle named output in the future
-            predictions[:, :, 0] = self.labels_normalizer.denormalize(list_to_dict(self.keras_model.output_names,
-                                                                                   predictions[:, :, 0]))['output']
+    :return: an RDD containing "reducer ready" lines representing encoded
+             key-value pairs, that is, where all lines with the same key are
+             adjacent and in the same partition
+    """
+    if skip_internal_protocol:
+        def key_func(k_v):
+            return k_v[0]
+    else:
+        def key_func(line):
+            return line.split(b'\t')[0]
+
+    rdd = rdd.groupBy(key_func, numPartitions=num_reducers)
+    rdd = _discard_key_and_flatten_values(rdd, sort_values=sort_values)
+
+    return rdd
+
+
+def _run_reducer(make_mrc_job, step_num, rdd, num_reducers=None):
+    """Run our job's combiner, and group lines with the same key together.
+
+    :param reducer_job: an instance of our job, instantiated to be the mapper
+                        for the step we wish to run
+    :param rdd: an RDD containing "reducer ready" lines representing encoded
+                key-value pairs, that is, where all lines with the same key are
+                adjacent and in the same partition
+    :param num_reducers: limit the number of paratitions of output rdd, which
+                         is similar to mrjob's limit on number of reducers.
+    :return: an RDD containing encoded key-value pairs
+    """
+    # initialize job class inside mapPartitions(). this deals with jobs that
+    # can't be initialized in the Spark driver (see #2044)
+    def reduce_lines(lines):
+        job = make_mrc_job('reducer', step_num)
+
+        read, write = job.pick_protocols(step_num, 'reducer')
+
+        # decode lines into key-value pairs (as a generator, not a list)
+        #
+        # line -> (k, v)
+        if read:
+            pairs = (read(line) for line in lines)
         else:
-            predictions[:, :, 0] *= self.labels_std
-            predictions[:, :, 0] += self.labels_mean
+            pairs = lines  # pairs were never encoded
 
-        print(f'Completed Inference, {(time.time() - start_time):.{2}f}s elapsed')
+        # reduce_pairs() runs key-value pairs through reducer
+        #
+        # (k, v), ... -> (k, v), ...
+        for k, v in job.reduce_pairs(pairs, step_num):
+            # encode key-value pairs back into lines
+            #
+            # (k, v) -> line
+            if write:
+                yield write(k, v)
+            else:
+                yield k, v
 
-        return predictions
+    # if *num_reducers* is set, don't re-partition. otherwise, doesn't matter
+    return rdd.mapPartitions(
+        reduce_lines,
+        preservesPartitioning=bool(num_reducers))
 
-    def test_encoder(self, input_data):
-        """
-        Use the neural network to do inference and get the hidden layer encoding/representation
 
-        :param input_data: Data to be inferred with neural network
-        :type input_data: ndarray
-        :return: hidden layer encoding/representation
-        :rtype: ndarray
-        :History: 2017-Dec-06 - Written - Henry Leung (University of Toronto)
-        """
-        input_data = self.pre_testing_checklist_master(input_data)
-        # Prevent shallow copy issue
-        if self.input_normalizer is not None:
-            input_array = self.input_normalizer.normalize(input_data, calc=False)
-        else:
-            # Prevent shallow copy issue
-            input_array = np.array(input_data)
-            input_array -= self.input_mean
-            input_array /= self.input_std
+def _discard_key_and_flatten_values(rdd, sort_values=False):
+    """Helper function for :py:func:`_run_combiner` and
+    :py:func:`_shuffle_and_sort`.
 
-        total_test_num = input_data['input'].shape[0]  # Number of testing data
+    Given an RDD containing (key, [line1, line2, ...]), discard *key*
+    and return an RDD containing line1, line2, ...
 
-        # for number of training data smaller than batch_size
-        if total_test_num < self.batch_size:
-            self.batch_size = input_data.shape[0]
+    Guarantees that lines in the same list will end up in the same partition.
 
-        # Due to the nature of how generator works, no overlapped prediction
-        data_gen_shape = (total_test_num // self.batch_size) * self.batch_size
-        remainder_shape = total_test_num - data_gen_shape  # Remainder from generator
+    If *sort_values* is true, sort each list of lines before flattening it.
+    """
+    if sort_values:
+        def map_f(key_and_lines):
+            return sorted(key_and_lines[1])
+    else:
+        def map_f(key_and_lines):
+            return key_and_lines[1]
 
-        norm_data_main = {}
-        norm_data_remainder = {}
-        for name in input_array.keys():
-            norm_data_main.update({name: input_array[name][:data_gen_shape]})
-            norm_data_remainder.update({name: input_array[name][data_gen_shape:]})
+    return rdd.flatMap(map_f, preservesPartitioning=True)
 
-        encoding = np.zeros((total_test_num, self.latent_dim))
 
-        start_time = time.time()
-        print("Starting Inference on Encoder")
+def _check_step(step, step_num):
+    """Check that the given step description is for a MRStep
+    with no input manifest"""
+    if step.get('type') != 'streaming':
+        raise ValueError(
+            'step %d has unexpected type: %r' % (
+                step_num, step.get('type')))
 
-        # Data Generator for prediction
-        prediction_generator = CVAEPredDataGenerator(batch_size=self.batch_size,
-                                                     shuffle=False,
-                                                     steps_per_epoch=total_test_num / self.batch_size,
-                                                     data=[norm_data_main])
-        encoding[:data_gen_shape] = np.asarray(self.keras_encoder.predict(prediction_generator))
+    if step.get('input_manifest'):
+        raise NotImplementedError(
+            'step %d uses an input manifest, which is unsupported')
 
-        if remainder_shape != 0:
-            # assume its caused by mono images, so need to expand dim by 1
-            for name in input_array.keys():
-                if len(norm_data_remainder[name][0].shape) != len(self._input_shape[name]):
-                    norm_data_remainder.update({name: np.expand_dims(norm_data_remainder[name], axis=-1)})
-            result = self.keras_encoder.predict(norm_data_remainder)
-            encoding[data_gen_shape:] = result
+    for mrc in ('mapper', 'reducer'):
+        _check_substep(step, step_num, mrc)
 
-        print(f'Completed Inference on Encoder, {(time.time() - start_time):.{2}f}s elapsed')
 
-        return encoding
+def _check_substep(step, step_num, mrc):
+    """Raise :py:class:`NotImplementedError` if the given substep
+    (e.g. ``'mapper'``) runs subprocesses."""
+    substep = step.get(mrc)
+    if not substep:
+        return
 
-    def evaluate(self, input_data, labels):
-        """
-        Evaluate neural network by provided input data and labels/reconstruction target to get back a metrics score
+    if substep.get('type') != 'script':
+        raise NotImplementedError(
+            "step %d's %s has unexpected type: %r" % (
+                step_num, mrc, substep.get('type')))
 
-        :param input_data: Data to be inferred with neural network
-        :type input_data: ndarray
-        :param labels: labels
-        :type labels: ndarray
-        :return: metrics score
-        :rtype: float
-        :History: 2018-May-20 - Written - Henry Leung (University of Toronto)
-        """
-        self.has_model_check()
-        input_data = list_to_dict(self.keras_model.input_names, input_data)
-        labels = list_to_dict(self.keras_model.output_names, labels)
+    if substep.get('pre_filter'):
+        raise NotImplementedError(
+            "step %d's %s has pre-filter, which is unsupported" % (
+                step_num, mrc))
 
-        # check if exists (existing means the model has already been trained (e.g. fine-tuning), so we do not need calculate mean/std again)
-        if self.input_normalizer is None:
-            self.input_normalizer = Normalizer(mode=self.input_norm_mode)
-            self.labels_normalizer = Normalizer(mode=self.labels_norm_mode)
 
-            norm_data = self.input_normalizer.normalize(input_data)
-            self.input_mean, self.input_std = self.input_normalizer.mean_labels, self.input_normalizer.std_labels
-            norm_labels = self.labels_normalizer.normalize(labels)
-            self.labels_mean, self.labels_std = self.labels_normalizer.mean_labels, self.labels_normalizer.std_labels
-        else:
-            there_data=self.den.generalize([1,5])                                   
-            norm_data = self.input_normalizer.normalize(input_data, calc=False)
-            norm_labels = self.labels_normalizer.normalize(labels, calc=False)
+def _make_arg_parser():
+    parser = ArgumentParser()
 
-        total_num = input_data['input'].shape[0]
-        eval_batchsize = self.batch_size if total_num < self.batch_size else total_num
-        steps = total_num // self.batch_size if total_num > self.batch_size else 1
+    parser.add_argument(
+        dest='job_class',
+        help=('dot-separated module and name of MRJob class. For example:'
+              ' mrjob.examples.mr_wc.MRWordCountUtility'))
 
-        start_time = time.time()
-        print("Starting Evaluation with testing")
+    parser.add_argument(
+        dest='input_path',
+        help=('Where to read input from. Can be a path or a URI, or several of'
+              ' these joined by commas'))
 
-        evaluate_generator = CVAEDataGenerator(batch_size=eval_batchsize,
-                                               shuffle=False,
-                                               steps_per_epoch=steps,
-                                               data=[norm_data,
-                                                     norm_labels])
+    parser.add_argument(
+        dest='output_path',
+        help=('An empty directory to write output to. Can be a path or URI.'))
 
-        scores = self.keras_model.evaluate(evaluate_generator)
-        if isinstance(scores, float):  # make sure scores is iterable
-            scores = list(str(scores))
-        outputname = self.keras_model.output_names
-        funcname = self.keras_model.metrics_names
+    # can't put this in _PASSTHRU_OPTIONS because it's also a runner opt
+    parser.add_argument(
+        '--max-output-files',
+        dest='max_output_files',
+        type=int,
+        help='Directly limit number of output files, using coalesce()',
+    )
+    parser.add_argument(
+        '--emulate-map-input-file',
+        dest='emulate_map_input_file',
+        action='store_true',
+        help=('Set mapreduce_map_input_file to the input file path'
+              ' in the first mapper function, so we can read it'
+              ' with mrjob.compat.jobconf_from_env(). Ignored if'
+              ' job has a Hadoop input format'),
+    )
+    parser.add_argument(
+        '--skip-internal-protocol',
+        dest='skip_internal_protocol',
+        action='store_true',
+        help=("Don't use the job's internal protocol to communicate"
+              " between tasks internal to the job, instead relying"
+              " on Spark to encode and decode raw data structures.")
+    )
 
-        print(f'Completed Evaluation, {(time.time() - start_time):.{2}f}s elapsed')
+    for args, kwargs in _PASSTHRU_OPTIONS:
+        parser.add_argument(*args, **kwargs)
 
-        return list_to_dict(funcname, scores)
+    return parser
+
+
+if __name__ == '__main__':
+    main()
