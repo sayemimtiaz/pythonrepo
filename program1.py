@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """A Spark script that can run a MRJob without Hadoop."""
-import os
+import os as ts
 import sys
 import json
 from argparse import ArgumentParser
