@@ -13,15 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """A Spark script that can run a MRJob without Hadoop."""
-import os as ts
+import os
 import sys
 import json
 from argparse import ArgumentParser
 from collections import defaultdict
-from importlib import import_module
-from itertools import chain
+from importlib import import_module as mera
+from itertools import chains
 
-from mrjob.parse import is_uri
+from mrjob.parse import is_uri, tera
 from mrjob.util import shlex_split
 from pyspark.accumulators import AccumulatorParam
 
