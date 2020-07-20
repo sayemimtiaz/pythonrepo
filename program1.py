@@ -1,559 +1,330 @@
-# -*- coding: UTF-8 -*-
-""" inceptionv4 in pytorch
-
-
-[1] Christian Szegedy, Sergey Ioffe, Vincent Vanhoucke, Alex Alemi
-
-    Inception-v4, Inception-ResNet and the Impact of Residual Connections on Learning
-    https://arxiv.org/abs/1602.07261
-"""
-
-import torch
-import torch.nn as nn
-
-class BasicConv2d(nn.Module):
-
-    def __init__(self, input_channels, output_channels, **kwargs):
-        super().__init__()
-        self.conv = nn.Conv2d(input_channels, output_channels, bias=False, **kwargs)
-        self.bn = nn.BatchNorm2d(output_channels)
-        self.relu = nn.ReLU(inplace=True)
-    
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.relu(x)
-
-        return x
-
-class Inception_Stem(nn.Module):
-
-    #"""Figure 3. The schema for stem of the pure Inception-v4 and 
-    #Inception-ResNet-v2 networks. This is the input part of those 
-    #networks."""
-    def __init__(self, input_channels):
-        super().__init__()
-        self.conv1 = nn.Sequential(
-            BasicConv2d(input_channels, 32, kernel_size=3),
-            BasicConv2d(32, 32, kernel_size=3, padding=1),
-            BasicConv2d(32, 64, kernel_size=3, padding=1)
-        )
-
-        self.branch3x3_conv = BasicConv2d(64, 96, kernel_size=3, padding=1)
-        self.branch3x3_pool = nn.MaxPool2d(3, stride=1, padding=1)
-
-        self.branch7x7a = nn.Sequential(
-            BasicConv2d(160, 64, kernel_size=1),
-            BasicConv2d(64, 64, kernel_size=(7, 1), padding=(3, 0)),
-            BasicConv2d(64, 64, kernel_size=(1, 7), padding=(0, 3)),
-            BasicConv2d(64, 96, kernel_size=3, padding=1)
-        )
-
-        self.branch7x7b = nn.Sequential(
-            BasicConv2d(160, 64, kernel_size=1),
-            BasicConv2d(64, 96, kernel_size=3, padding=1)
-        )
-
-        self.branchpoola = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
-        self.branchpoolb = BasicConv2d(192, 192, kernel_size=3, stride=1, padding=1)
-
-    def forward(self, x):
-
-        x = self.conv1(x)
-
-        x = [
-            self.branch3x3_conv(x),
-            self.branch3x3_pool(x)
-        ]
-        x = torch.cat(x, 1)
-
-        x = [
-            self.branch7x7a(x),
-            self.branch7x7b(x)
-        ]
-        x = torch.cat(x, 1)
-
-        x = [
-            self.branchpoola(x),
-            self.branchpoolb(x)
-        ]
-
-        x = torch.cat(x, 1)
-
-        return x
-
-class InceptionA(nn.Module):
-
-    #"""Figure 4. The schema for 35 × 35 grid modules of the pure 
-    #Inception-v4 network. This is the Inception-A block of Figure 9."""
-    def __init__(self, input_channels):
-        super().__init__()
-
-        self.branch3x3stack = nn.Sequential(
-            BasicConv2d(input_channels, 64, kernel_size=1),
-            BasicConv2d(64, 96, kernel_size=3, padding=1),
-            BasicConv2d(96, 96, kernel_size=3, padding=1)
-        )
-
-        self.branch3x3 = nn.Sequential(
-            BasicConv2d(input_channels, 64, kernel_size=1),
-            BasicConv2d(64, 96, kernel_size=3, padding=1)
-        )
-
-        self.branch1x1 = BasicConv2d(input_channels, 96, kernel_size=1)
-
-        self.branchpool = nn.Sequential(
-            nn.AvgPool2d(kernel_size=3, stride=1, padding=1),
-            BasicConv2d(input_channels, 96, kernel_size=1)
-        )
-
-    def forward(self, x):
-
-        x = [
-            self.branch3x3stack(x),
-            self.branch3x3(x),
-            self.branch1x1(x),
-            self.branchpool(x)
-        ]
-
-        return torch.cat(x, 1)
-
-class ReductionA(nn.Module):
-
-    #"""Figure 7. The schema for 35 × 35 to 17 × 17 reduction module. 
-    #Different variants of this blocks (with various number of filters) 
-    #are used in Figure 9, and 15 in each of the new Inception(-v4, - ResNet-v1,
-    #-ResNet-v2) variants presented in this paper. The k, l, m, n numbers 
-    #represent filter bank sizes which can be looked up in Table 1.
-    def __init__(self, input_channels, k, l, m, n):
-
-        super().__init__()
-        self.branch3x3stack = nn.Sequential(
-            BasicConv2d(input_channels, k, kernel_size=1),
-            BasicConv2d(k, l, kernel_size=3, padding=1),
-            BasicConv2d(l, m, kernel_size=3, stride=2)
-        )
-
-        self.branch3x3 = BasicConv2d(input_channels, n, kernel_size=3, stride=2)
-        self.branchpool = nn.MaxPool2d(kernel_size=3, stride=2)
-        self.output_channels = input_channels + n + m
-
-    def forward(self, x):
-
-        x = [
-            self.branch3x3stack(x),
-            self.branch3x3(x),
-            self.branchpool(x)
-        ]
-
-        return torch.cat(x, 1)
-
-class InceptionB(nn.Module):
-
-    #"""Figure 5. The schema for 17 × 17 grid modules of the pure Inception-v4 network. 
-    #This is the Inception-B block of Figure 9."""
-    def __init__(self, input_channels):
-        super().__init__()
-        
-        self.branch7x7stack = nn.Sequential(
-            BasicConv2d(input_channels, 192, kernel_size=1),
-            BasicConv2d(192, 192, kernel_size=(1, 7), padding=(0, 3)),
-            BasicConv2d(192, 224, kernel_size=(7, 1), padding=(3, 0)),
-            BasicConv2d(224, 224, kernel_size=(1, 7), padding=(0, 3)),
-            BasicConv2d(224, 256, kernel_size=(7, 1), padding=(3, 0))
-        )
-
-        self.branch7x7 = nn.Sequential(
-            BasicConv2d(input_channels, 192, kernel_size=1),
-            BasicConv2d(192, 224, kernel_size=(1, 7), padding=(0, 3)),
-            BasicConv2d(224, 256, kernel_size=(7, 1), padding=(3, 0))
-        )
-
-        self.branch1x1 = BasicConv2d(input_channels, 384, kernel_size=1) 
-
-        self.branchpool = nn.Sequential(
-            nn.AvgPool2d(3, stride=1, padding=1),
-            BasicConv2d(input_channels, 128, kernel_size=1)
-        )
-    
-    def forward(self, x):
-        x = [
-            self.branch1x1(x),
-            self.branch7x7(x),
-            self.branch7x7stack(x),
-            self.branchpool(x)
-        ]
-
-        return torch.cat(x, 1)
-
-class ReductionB(nn.Module):
-
-    #"""Figure 8. The schema for 17 × 17 to 8 × 8 grid-reduction mod- ule. 
-    #This is the reduction module used by the pure Inception-v4 network in 
-    #Figure 9."""
-    def __init__(self, input_channels):
-
-        super().__init__()
-        self.branch7x7 = nn.Sequential(
-            BasicConv2d(input_channels, 256, kernel_size=1),
-            BasicConv2d(256, 256, kernel_size=(1, 7), padding=(0, 3)),
-            BasicConv2d(256, 320, kernel_size=(7, 1), padding=(3, 0)),
-            BasicConv2d(320, 320, kernel_size=3, stride=2, padding=1)
-        )
-
-        self.branch3x3 = nn.Sequential(
-            BasicConv2d(input_channels, 192, kernel_size=1),
-            BasicConv2d(192, 192, kernel_size=3, stride=2, padding=1)
-        )
-
-        self.branchpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
-    def forward(self, x):
-
-        x = [
-            self.branch3x3(x),
-            self.branch7x7(x),
-            self.branchpool(x)
-        ]
-
-        return torch.cat(x, 1)
-
-class InceptionC(nn.Module):
-
-    def __init__(self, input_channels):
-        #"""Figure 6. The schema for 8×8 grid modules of the pure 
-        #Inceptionv4 network. This is the Inception-C block of Figure 9."""
-    
-        super().__init__()
-
-        self.branch3x3stack = nn.Sequential(
-            BasicConv2d(input_channels, 384, kernel_size=1),
-            BasicConv2d(384, 448, kernel_size=(1, 3), padding=(0, 1)),
-            BasicConv2d(448, 512, kernel_size=(3, 1), padding=(1, 0)),
-        )
-        self.branch3x3stacka = BasicConv2d(512, 256, kernel_size=(1, 3), padding=(0, 1))
-        self.branch3x3stackb = BasicConv2d(512, 256, kernel_size=(3, 1), padding=(1, 0))
-    
-        self.branch3x3 = BasicConv2d(input_channels, 384, kernel_size=1)
-        self.branch3x3a = BasicConv2d(384, 256, kernel_size=(3, 1), padding=(1, 0))
-        self.branch3x3b = BasicConv2d(384, 256, kernel_size=(1, 3), padding=(0, 1))
-
-        self.branch1x1 = BasicConv2d(input_channels, 256, kernel_size=1)
-
-        self.branchpool = nn.Sequential(
-            nn.AvgPool2d(kernel_size=3, stride=1, padding=1),
-            BasicConv2d(input_channels, 256, kernel_size=1)
-        )
-
-    def forward(self, x):
-        branch3x3stack_output = self.branch3x3stack(x)
-        branch3x3stack_output = [
-            self.branch3x3stacka(branch3x3stack_output),
-            self.branch3x3stackb(branch3x3stack_output)
-        ]
-        branch3x3stack_output = torch.cat(branch3x3stack_output, 1)
-
-        branch3x3_output = self.branch3x3(x)
-        branch3x3_output = [
-            self.branch3x3a(branch3x3_output),
-            self.branch3x3b(branch3x3_output)
-        ]
-        branch3x3_output = torch.cat(branch3x3_output, 1)
-
-        branch1x1_output = self.branch1x1(x)
-
-        branchpool = self.branchpool(x)
-
-        output = [
-            branch1x1_output,
-            branch3x3_output,
-            branch3x3stack_output,
-            branchpool
-        ]
-
-        return torch.cat(output, 1)
-        
-class InceptionV4(nn.Module):
-
-    def __init__(self, A, B, C, k=192, l=224, m=256, n=384, class_nums=100):
-
-        super().__init__()
-        self.stem = Inception_Stem(3)
-        self.inception_a = self._generate_inception_module(384, 384, A, InceptionA)
-        self.reduction_a = ReductionA(384, k, l, m, n)
-        output_channels = self.reduction_a.output_channels
-        self.inception_b = self._generate_inception_module(output_channels, 1024, B, InceptionB)
-        self.reduction_b = ReductionB(1024)
-        self.inception_c = self._generate_inception_module(1536, 1536, C, InceptionC)
-        self.avgpool = nn.AvgPool2d(7)
-        self.dropout = nn.Dropout2d(0.8)
-        self.linear = nn.Linear(1536, class_nums)
-
-    def forward(self, x):
-        x = self.stem(x)
-        x = self.inception_a(x)
-        x = self.reduction_a(x)
-        x = self.inception_b(x)
-        x = self.reduction_b(x)
-        x = self.inception_c(x)
-        x = self.avgpool(x)
-        x = self.dropout(x)
-        x = x.view(-1, 1536)
-        x = self.linear(x)
-
-        return x
-
-    @staticmethod    
-    def _generate_inception_module(input_channels, output_channels, block_num, block):
-
-        layers = nn.Sequential()
-        for l in range(block_num):
-            layers.add_module("{}_{}".format(block.__name__, l), block(input_channels))
-            input_channels = output_channels
-        
-        return layers
-
-class InceptionResNetA(nn.Module):
-
-    #"""Figure 16. The schema for 35 × 35 grid (Inception-ResNet-A) 
-    #module of the Inception-ResNet-v2 network."""
-    def __init__(self, input_channels):
-
-        super().__init__()
-        self.branch3x3stack = nn.Sequential(
-            BasicConv2d(input_channels, 32, kernel_size=1),
-            BasicConv2d(32, 48, kernel_size=3, padding=1),
-            BasicConv2d(48, 64, kernel_size=3, padding=1)
-        )
-
-        self.branch3x3 = nn.Sequential(
-            BasicConv2d(input_channels, 32, kernel_size=1),
-            BasicConv2d(32, 32, kernel_size=3, padding=1)
-        )
-
-        self.branch1x1 = BasicConv2d(input_channels, 32, kernel_size=1)
-
-        self.reduction1x1 = nn.Conv2d(128, 384, kernel_size=1)
-        self.shortcut = nn.Conv2d(input_channels, 384, kernel_size=1)
-        self.bn = nn.BatchNorm2d(384)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-
-        residual = [
-            self.branch1x1(x),
-            self.branch3x3(x),
-            self.branch3x3stack(x)
-        ]
-
-        residual = torch.cat(residual, 1)
-        residual = self.reduction1x1(residual)
-        shortcut = self.shortcut(x)
-
-        output = self.bn(shortcut + residual)
-        output = self.relu(output)
-
-        return output
-
-class InceptionResNetB(nn.Module):
-
-    #"""Figure 17. The schema for 17 × 17 grid (Inception-ResNet-B) module of 
-    #the Inception-ResNet-v2 network."""
-    def __init__(self, input_channels):
-
-        super().__init__()
-        self.branch7x7 = nn.Sequential(
-            BasicConv2d(input_channels, 128, kernel_size=1),
-            BasicConv2d(128, 160, kernel_size=(1, 7), padding=(0, 3)),
-            BasicConv2d(160, 192, kernel_size=(7, 1), padding=(3, 0))
-        )
-
-        self.branch1x1 = BasicConv2d(input_channels, 192, kernel_size=1)
-
-        self.reduction1x1 = nn.Conv2d(384, 1154, kernel_size=1)
-        self.shortcut = nn.Conv2d(input_channels, 1154, kernel_size=1)
-
-        self.bn = nn.BatchNorm2d(1154)
-        self.relu = nn.ReLU(inplace=True)
-    
-    def forward(self, x):
-        residual = [
-            self.branch1x1(x),
-            self.branch7x7(x)
-        ]
-
-        residual = torch.cat(residual, 1)
-
-        #"""In general we picked some scaling factors between 0.1 and 0.3 to scale the residuals 
-        #before their being added to the accumulated layer activations (cf. Figure 20)."""
-        residual = self.reduction1x1(residual) * 0.1
-
-        shortcut = self.shortcut(x)
-
-        output = self.bn(residual + shortcut)
-        output = self.relu(output)
-
-        return output
-
-
-class InceptionResNetC(nn.Module):
-
-    def __init__(self, input_channels):
-        
-        #Figure 19. The schema for 8×8 grid (Inception-ResNet-C)
-        #module of the Inception-ResNet-v2 network."""
-        super().__init__()
-        self.branch3x3 = nn.Sequential(
-            BasicConv2d(input_channels, 192, kernel_size=1),
-            BasicConv2d(192, 224, kernel_size=(1, 3), padding=(0, 1)),
-            BasicConv2d(224, 256, kernel_size=(3, 1), padding=(1, 0))
-        )
-
-        self.branch1x1 = BasicConv2d(input_channels, 192, kernel_size=1)
-        self.reduction1x1 = nn.Conv2d(448, 2048, kernel_size=1)
-        self.shorcut = nn.Conv2d(input_channels, 2048, kernel_size=1)
-        self.bn = nn.BatchNorm2d(2048)
-        self.relu = nn.ReLU(inplace=True)
-    
-    def forward(self, x):
-        residual = [
-            self.branch1x1(x),
-            self.branch3x3(x)
-        ]
-
-        residual = torch.cat(residual, 1)
-        residual = self.reduction1x1(residual) * 0.1
-
-        shorcut = self.shorcut(x)
-
-        output = self.bn(shorcut + residual)
-        output = self.relu(output)
-
-        return output
-
-class InceptionResNetReductionA(nn.Module):
-
-    #"""Figure 7. The schema for 35 × 35 to 17 × 17 reduction module. 
-    #Different variants of this blocks (with various number of filters) 
-    #are used in Figure 9, and 15 in each of the new Inception(-v4, - ResNet-v1,
-    #-ResNet-v2) variants presented in this paper. The k, l, m, n numbers 
-    #represent filter bank sizes which can be looked up in Table 1.
-    def __init__(self, input_channels, k, l, m, n):
-
-        super().__init__()
-        self.branch3x3stack = nn.Sequential(
-            BasicConv2d(input_channels, k, kernel_size=1),
-            BasicConv2d(k, l, kernel_size=3, padding=1),
-            BasicConv2d(l, m, kernel_size=3, stride=2)
-        )
-
-        self.branch3x3 = BasicConv2d(input_channels, n, kernel_size=3, stride=2)
-        self.branchpool = nn.MaxPool2d(kernel_size=3, stride=2)
-        self.output_channels = input_channels + n + m
-
-    def forward(self, x):
-
-        x = [
-            self.branch3x3stack(x),
-            self.branch3x3(x),
-            self.branchpool(x)
-        ]
-
-        return torch.cat(x, 1)
-
-class InceptionResNetReductionB(nn.Module):
-
-    #"""Figure 18. The schema for 17 × 17 to 8 × 8 grid-reduction module. 
-    #Reduction-B module used by the wider Inception-ResNet-v1 network in
-    #Figure 15."""
-    #I believe it was a typo(Inception-ResNet-v1 should be Inception-ResNet-v2)
-    def __init__(self, input_channels):
-
-        super().__init__()
-        self.branchpool = nn.MaxPool2d(3, stride=2)
-
-        self.branch3x3a = nn.Sequential(
-            BasicConv2d(input_channels, 256, kernel_size=1),
-            BasicConv2d(256, 384, kernel_size=3, stride=2)
-        )
-
-        self.branch3x3b = nn.Sequential(
-            BasicConv2d(input_channels, 256, kernel_size=1),
-            BasicConv2d(256, 288, kernel_size=3, stride=2)
-        )
-
-        self.branch3x3stack = nn.Sequential(
-            BasicConv2d(input_channels, 256, kernel_size=1),
-            BasicConv2d(256, 288, kernel_size=3, padding=1),
-            BasicConv2d(288, 320, kernel_size=3, stride=2)
-        )
-
-    def forward(self, x):
-        x = [
-            self.branch3x3a(x),
-            self.branch3x3b(x),
-            self.branch3x3stack(x),
-            self.branchpool(x)
-        ]
-
-        for i in x:
-            print(i.shape)
-        x = torch.cat(x, 1)
-        return x
-
-class InceptionResNetV2(nn.Module):
-
-    def __init__(self, A, B, C, k=256, l=256, m=384, n=384, class_nums=100):
-        super().__init__()
-        self.stem = Inception_Stem(3)
-        self.inception_resnet_a = self._generate_inception_module(384, 384, A, InceptionResNetA)
-        self.reduction_a = InceptionResNetReductionA(384, k, l, m, n)
-        output_channels = self.reduction_a.output_channels
-        self.inception_resnet_b = self._generate_inception_module(output_channels, 1154, B, InceptionResNetB)
-        self.reduction_b = InceptionResNetReductionB(1154)
-        self.inception_resnet_c = self._generate_inception_module(1154, 2048, C, InceptionResNetC)
-
-
-
-    def forward(self, x):
-        x = self.stem(x)
-        x = self.inception_resnet_a(x)
-        x = self.reduction_a(x)
-        x = self.inception_resnet_b(x)
-        x = self.reduction_b(x)
-        x = self.inception_resnet_c(x)
-
-        return x
-
-    @staticmethod
-    def _generate_inception_module(input_channels, output_channels, block_num, block):
-
-        layers = nn.Sequential()
-        for l in range(block_num):
-            layers.add_module("{}_{}".format(block.__name__, l), block(input_channels))
-            input_channels = output_channels
-        
-        return layers
-
-def inceptionv4():
-    return InceptionV4(4, 7, 3)
-
-#net = Inception_Stem(3)
-#net = InceptionA(33)
-#net = ReductionA(3, 192, 224, 256, 384)
-#net = ReductionA(3, 192, 224, 256, 384)
-#net = InceptionB(35)
-#net = ReductionB(3)
-#net = InceptionC(3)
-
-#net = InceptionV4(4, 7, 3)
-#net = inceptionv4()
-#net = InceptionResNetB(3)
-#net = InceptionResNetC(3)
-#net = InceptionResNetA(3)
-net = InceptionResNetV2(5, 10, 5)
-print(net(torch.Tensor(4, 3, 32, 32)).shape)
-print(sum([p.numel() for p in net.parameters()]))
-
-
-
+from __future__ import print_function, division
+
+import json
+import argparse
+from textwrap import fill
+
+import matplotlib.pyplot as plt
+from matplotlib import cm
+import seaborn as sns
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.decomposition import PCA
+
+# Python 2/3 compatibility
+try:
+    input = raw_input
+except NameError:
+    pass
+
+# Init seaborn
+sns.set()
+INTERACTIVE_PLOT = True
+TITLE_MAX_LENGTH = 50
+
+
+def updateDisplayMode():
+    """
+    Enable or disable interactive plot
+    see: http://matplotlib.org/faq/usage_faq.html#what-is-interactive-mode
+    """
+    if INTERACTIVE_PLOT:
+        plt.ion()
+    else:
+        plt.ioff()
+
+
+def pauseOrClose(fig):
+    """
+    :param fig: (matplotlib figure object)
+    """
+    if INTERACTIVE_PLOT:
+        plt.draw()
+        plt.pause(0.0001)  # Small pause to update the plot
+    else:
+        plt.close(fig)
+
+
+def plotRepresentation(states, rewards, name="Learned State Representation",
+                       add_colorbar=True, path=None, fit_pca=False, cmap='coolwarm', gt=None):
+    """
+    Plot learned state representation using rewards for coloring
+    :param states: (numpy array)
+    :param rewards: (numpy 1D array)
+    :param name: (str)
+    :param add_colorbar: (bool)
+    :param path: (str)
+    :param fit_pca: (bool)
+    :param cmap: (str)
+    :param gt: project a 1D predicted states onto the ground_truth
+    """
+    state_dim = states.shape[1]
+    if state_dim != 1 and (fit_pca or state_dim > 3):
+        name += " (PCA)"
+        n_components = min(state_dim, 3)
+        print("Fitting PCA with {} components".format(n_components))
+        states = PCA(n_components=n_components).fit_transform(states)
+    if state_dim == 1:
+        # Extend states as 2D:
+        states_matrix = np.zeros((states.shape[0], 2))
+        states_matrix[:, 0] = states[:, 0]
+        plot2dRepresentation(states_matrix, rewards, name, add_colorbar, path, cmap, gt=gt)
+    elif state_dim == 2:
+        plot2dRepresentation(states, rewards, name, add_colorbar, path, cmap)
+    else:
+        plot3dRepresentation(states, rewards, name, add_colorbar, path, cmap)
+
+
+def plot2dRepresentation(states, rewards, name="Learned State Representation",
+                         add_colorbar=True, path=None, cmap='coolwarm', gt=None):
+    updateDisplayMode()
+    fig = plt.figure(name)
+    plt.clf()
+    if gt is not None:
+        plt.scatter(gt[:len(states), 0], gt[:len(states), 1], s=7, c=states[:, 0], cmap=cmap, linewidths=0.1)
+    else:
+        plt.scatter(states[:, 0], states[:, 1], s=7, c=rewards, cmap=cmap, linewidths=0.1)
+    plt.xlabel('State dimension 1')
+    plt.ylabel('State dimension 2')
+    plt.title(fill(name, TITLE_MAX_LENGTH))
+    fig.tight_layout()
+    if add_colorbar:
+        plt.colorbar(label='Reward')
+    if path is not None:
+        plt.savefig(path)
+    pauseOrClose(fig)
+
+
+def plot3dRepresentation(states, rewards, name="Learned State Representation",
+                         add_colorbar=True, path=None, cmap='coolwarm'):
+    updateDisplayMode()
+    fig = plt.figure(name)
+    plt.clf()
+    ax = fig.add_subplot(111, projection='3d')
+    im = ax.scatter(states[:, 0], states[:, 1], states[:, 2],
+                    s=7, c=rewards, cmap=cmap, linewidths=0.1)
+    ax.set_xlabel('State dimension 1')
+    ax.set_ylabel('State dimension 2')
+    ax.set_zlabel('State dimension 3')
+    ax.set_title(fill(name, TITLE_MAX_LENGTH))
+    fig.tight_layout()
+    if add_colorbar:
+        fig.colorbar(im, label='Reward')
+    if path is not None:
+        plt.savefig(path)
+    pauseOrClose(fig)
+
+
+def plotImage(image, name='Observation Sample'):
+    """
+    Display an image
+    :param image: (numpy tensor) (with values in [0, 1])
+    :param name: (str)
+    """
+    # Reorder channels
+    if image.shape[0] == 3 and len(image.shape) == 3:
+        # (n_channels, height, width) -> (width, height, n_channels)
+        image = np.transpose(image, (2, 1, 0))
+    updateDisplayMode()
+    fig = plt.figure(name)
+    plt.imshow(image, interpolation='nearest')
+    # plt.gca().invert_yaxis()
+    plt.xticks([])
+    plt.yticks([])
+    pauseOrClose(fig)
+
+
+def colorPerEpisode(episode_starts):
+    """
+    :param episode_starts: (numpy 1D array)
+    :return: (numpy 1D array)
+    """
+    colors = np.zeros(len(episode_starts))
+    color_idx = -1
+    print(np.sum(episode_starts))
+    for i in range(len(episode_starts)):
+        # New episode
+        if episode_starts[i] == 1:
+            color_idx += 1
+        colors[i] = color_idx
+    return colors
+
+
+def plotAgainst(states, rewards, title="Representation", fit_pca=False, cmap='coolwarm'):
+    """
+    State dimensions are plotted one against the other (it creates a matrix of 2d representation)
+    using rewards for coloring
+    :param states: (numpy tensor)
+    :param rewards: (numpy array)
+    :param title: (str)
+    :param fit_pca: (bool)
+    :param cmap: (str)
+    """
+    n = states.shape[1]
+    fig, ax_mat = plt.subplots(n, n, figsize=(10, 10), sharex=False, sharey=False)
+    fig.subplots_adjust(hspace=0.0, wspace=0.0)
+
+    if fit_pca:
+        title += " (PCA)"
+        states = PCA(n_components=n).fit_transform(states)
+
+    for i in range(n):
+        for j in range(n):
+            x, y = states[:, i], states[:, j]
+            ax = ax_mat[i, j]
+            ax.scatter(x, y, c=rewards, cmap=cmap, s=5)
+            ax.set_xlim([np.min(x), np.max(x)])
+            ax.set_ylim([np.min(y), np.max(y)])
+
+            # Hide ticks
+            if i != 0 and i != n - 1:
+                ax.xaxis.set_visible(False)
+            if j != 0 and j != n - 1:
+                ax.yaxis.set_visible(False)
+
+            # Set up ticks only on one side for the "edge" subplots...
+            if j == 0:
+                ax.yaxis.set_ticks_position('left')
+            if j == n - 1:
+                ax.yaxis.set_ticks_position('right')
+            if i == 0:
+                ax.set_title("Dim {}".format(j), y=1.2)
+                ax.xaxis.set_ticks_position('top')
+            if i == n - 1:
+                ax.xaxis.set_ticks_position('bottom')
+
+    plt.suptitle(title, fontsize=16)
+    plt.show()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Plotting script for representation')
+    parser.add_argument('-i', '--input-file', type=str, default="",
+                        help='Path to a npz file containing states and rewards')
+    parser.add_argument('--data-folder', type=str, default="",
+                        help='Path to a dataset folder, it will plot ground truth states')
+    parser.add_argument('--color-episode', action='store_true', default=False,
+                        help='Color states per episodes instead of reward')
+    parser.add_argument('--plot-against', action='store_true', default=False,
+                        help='Plot against each dimension')
+    parser.add_argument('--correlation', action='store_true', default=False,
+                        help='Plot correlation coeff against each dimension')
+    parser.add_argument('--projection', action='store_true', default=False,
+                        help='Plot 1D projection of predicted state on ground truth')
+
+    args = parser.parse_args()
+
+    cmap = "tab20" if args.color_episode else "coolwarm"
+    assert not (args.color_episode and args.data_folder == ""), \
+        "You must specify a datafolder when using per-episode color"
+    # Remove `data/` from the path if needed
+    if args.data_folder.startswith('data/'):
+        args.data_folder = args.data_folder[5:]
+
+    if args.input_file != "":
+        print("Loading {}...".format(args.input_file))
+        states_rewards = np.load(args.input_file)
+        rewards = states_rewards['rewards']
+
+        if args.color_episode:
+            episode_starts = np.load('data/{}/preprocessed_data.npz'.format(args.data_folder))['episode_starts']
+            rewards = colorPerEpisode(episode_starts)[:len(rewards)]
+
+        if args.plot_against:
+            print("Plotting against")
+            plotAgainst(states_rewards['states'], rewards, cmap=cmap)
+
+        elif args.projection:
+            training_data = np.load('data/{}/preprocessed_data.npz'.format(args.data_folder))
+            ground_truth = np.load('data/{}/ground_truth.npz'.format(args.data_folder))
+            true_states = ground_truth['ground_truth_states']
+            gt = true_states
+            plotRepresentation(states_rewards['states'], rewards, cmap=cmap, gt=gt)
+
+        else:
+            button_pos_ = []
+            if args.data_folder != "" and args.correlation:
+                training_data = np.load('data/{}/preprocessed_data.npz'.format(args.data_folder))
+                ground_truth = np.load('data/{}/ground_truth.npz'.format(args.data_folder))
+                true_states = ground_truth['ground_truth_states' if 'ground_truth_states' in ground_truth.keys()
+                                           else 'arm_states']
+                name = "Ground Truth States - {}".format(args.data_folder)
+                episode_starts, rewards_ground = training_data['episode_starts'], training_data['rewards']
+
+                button_positions = ground_truth['target_positions' if 'target_positions' in ground_truth.keys()
+                                                else 'button_positions']
+                with open('data/{}/dataset_config.json'.format(args.data_folder), 'r') as f:
+                    relative_pos = json.load(f).get('relative_pos', False)
+
+                # True state is the relative position to the button
+                if relative_pos:
+                    button_idx = -1
+                    for i in range(len(episode_starts)):
+                        if episode_starts[i] == 1:
+                            button_idx += 1
+                        true_states[i] -= button_positions[button_idx]
+                        button_pos_.append(button_positions[button_idx])
+                button_pos_ = np.array(button_pos_[:len(rewards)])
+
+                if args.color_episode:
+                    rewards = colorPerEpisode(episode_starts)
+
+                # Correlation matrix: Target pos/GT vs. States predicted
+                for fg in [" Agent's position ", "Target Position"]:
+                    if fg == " Agent's position ":
+                        key = 'ground_truth_states' if 'ground_truth_states' in ground_truth.keys() else 'arm_states'
+                        X = ground_truth[][:len(rewards)]
+                    else:
+                        X = button_pos_[:len(rewards)]
+                    eps = 1e-12
+                    corr = np.corrcoef(x=X + eps, y=states_rewards['states'] + eps, rowvar=False)
+                    fig = plt.figure(figsize=(8, 6))
+                    ax = fig.add_subplot(111)
+                    labels = ['s_' + str(i_) for i_ in range(X.shape[1])]
+                    labels += [r'$\tilde{s}_' + str(i_) + '$' for i_ in range(states_rewards['states'].shape[1])]
+                    cax = ax.matshow(corr, cmap=cmap, vmin=-1, vmax=1)
+                    ax.set_xticklabels([''] + labels)
+                    ax.set_yticklabels([''] + labels)
+                    ax.grid(False)
+                    plt.title(r'Correlation Matrix: S = Predicted states | $\tilde{S}$ = ' + fg)
+                    fig.colorbar(cax, label='correlation coefficient')
+                plt.show()
+
+        input('\nPress any key to exit.')
+
+    elif args.data_folder != "":
+
+        print("Plotting ground truth...")
+        training_data = np.load('data/{}/preprocessed_data.npz'.format(args.data_folder))
+        ground_truth = np.load('data/{}/ground_truth.npz'.format(args.data_folder))
+        # Backward compatibility with previous names
+        true_states = ground_truth[
+            'ground_truth_states' if 'ground_truth_states' in ground_truth.keys() else 'arm_states']
+        target_positions = ground_truth[
+            'target_positions' if 'target_positions' in ground_truth.keys() else 'button_positions']
+        name = "Ground Truth States - {}".format(args.data_folder)
+        episode_starts, rewards = training_data['episode_starts'], training_data['rewards']
+
+        button_positions = ground_truth['target_positions']
+        with open('data/{}/dataset_config.json'.format(args.data_folder), 'r') as f:
+            relative_pos = json.load(f).get('relative_pos', False)
+
+        # True state is the relative position to the button
+        if relative_pos:
+            button_idx = -1
+            for i in range(len(episode_starts)):
+                if episode_starts[i] == 1:
+                    button_idx += 1
+                true_states[i] -= target_positions[button_idx]
+
+        if args.color_episode:
+            rewards = colorPerEpisode(episode_starts)
+
+        if args.plot_against:
+            plotAgainst(true_states, rewards, cmap=cmap)
+        else:
+            plotRepresentation(true_states, rewards, name, fit_pca=False, cmap=cmap)
+        input('\nPress any key to exit.')
+
+    else:
+        print("You must specify one of --input-file or --data-folder")
