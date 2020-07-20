@@ -1,454 +1,406 @@
-"""
-Module containing implementations of some unnormalized probability density 
-functions.
-"""
+# Authors:
+# Christian F. Baumgartner (c.f.baumgartner@gmail.com)
+# Lisa M. Koch (lisa.margret.koch@gmail.com)
 
-__author__ = 'wittawat'
+import os
+import glob
+import numpy as np
+import logging
 
-from abc import ABCMeta, abstractmethod
-import autograd
-import autograd.numpy as np
-import kgof.config as config
-import kgof.util as util
-import kgof.data as data
-import scipy.stats as stats
+import argparse
+import metrics_acdc
+import time
+from importlib.machinery import SourceFileLoader
+import tensorflow as tf
+from skimage import transform
 
-class UnnormalizedDensity(object):
-    __metaclass__ = ABCMeta
+import config.system as sys_config
+import model as model
+import utils
+import image_utils
 
-    @abstractmethod
-    def log_den(self, X):
-        """
-        Evaluate this log of the unnormalized density on the n points in X.
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
-        X: n x d numpy array
+# Set SGE_GPU environment variable if we are not on the local host
+sys_config.setup_GPU_environment()
 
-        Return a one-dimensional numpy array of length n.
-        """
-        raise NotImplementedError()
 
-    def log_normalized_den(self, X):
-        """
-        Evaluate the exact normalized log density. The difference to log_den()
-        is that this method adds the normalizer. This method is not
-        compulsory. Subclasses do not need to override.
-        """
-        raise NotImplementedError()
+def score_data(input_folder, output_folder, model_path, exp_config, do_postprocessing=False, gt_exists=True, evaluate_all=False, use_iter=None):
 
-    def get_datasource(self):
-        """
-        Return a DataSource that allows sampling from this density.
-        May return None if no DataSource is implemented.
-        Implementation of this method is not enforced in the subclasses.
-        """
-        return None
+    nx, ny = exp_config.image_size[:2]
+    batch_size = 1
+    num_channels = exp_config.nlabels
 
-    def grad_log(self, X):
-        """
-        Evaluate the gradients (with respect to the input) of the log density at
-        each of the n points in X. This is the score function. Given an
-        implementation of log_den(), this method will automatically work.
-        Subclasses may override this if a more efficient implementation is
-        available.
+    image_tensor_shape = [batch_size] + list(exp_config.image_size) + [1]
+    images_pl = tf.placeholder(tf.float32, shape=image_tensor_shape, name='images')
 
-        X: n x d numpy array.
+    # According to the experiment config, pick a model and predict the output
+    # TODO: Implement majority voting using 3 models.
+    mask_pl, softmax_pl = model.predict(images_pl, exp_config)
+    saver = tf.train.Saver()
+    init = tf.global_variables_initializer()
 
-        Return an n x d numpy array of gradients.
-        """
-        g = autograd.elementwise_grad(self.log_den)
-        G = g(X)
-        return G
+    evaluate_test_set = not gt_exists
 
-    @abstractmethod
-    def dim(self):
-        """
-        Return the dimension of the input.
-        """
-        raise NotImplementedError()
+    with tf.Session() as sess:
 
-# end UnnormalizedDensity
+        sess.run(init)
 
-class IsotropicNormal(UnnormalizedDensity):
-    """
-    Unnormalized density of an isotropic multivariate normal distribution.
-    """
-    def __init__(self, mean, variance):
-        """
-        mean: a numpy array of length d for the mean 
-        variance: a positive floating-point number for the variance.
-        """
-        self.mean = mean 
-        self.variance = variance
-
-    def log_den(self, X):
-        mean = self.mean 
-        variance = self.variance
-        unden = -np.sum((X-mean)**2, 1)/(2.0*variance)
-        return unden
-
-    def log_normalized_den(self, X):
-        d = self.dim()
-        return stats.multivariate_normal.logpdf(X, mean=self.mean, cov=self.variance*np.eye(d))
-
-    def get_datasource(self):
-        return data.DSIsotropicNormal(self.mean, self.variance)
-
-    def dim(self):
-        return len(self.mean)
-
-
-class Normal(UnnormalizedDensity):
-    """
-    A multivariate normal distribution.
-    """
-    def __init__(self, mean, cov):
-        """
-        mean: a numpy array of length d.
-        cov: d x d numpy array for the covariance.
-        """
-        self.mean = mean 
-        self.cov = cov
-        assert mean.shape[0] == cov.shape[0]
-        assert cov.shape[0] == cov.shape[1]
-        E, V = np.linalg.eig(cov)
-        if np.any(np.abs(E) <= 1e-7):
-            raise ValueError('covariance matrix is not full rank.')
-        # The precision matrix
-        self.prec = np.dot(np.dot(V, np.diag(1.0/E)), V.T)
-        print self.prec
-
-    def log_den(self, X):
-        mean = self.mean 
-        X0 = X - mean
-        X0prec = np.dot(X0, self.prec)
-        unden = -np.sum(X0prec*X0, 1)/2.0
-        return unden
-
-    def get_datasource(self):
-        return data.DSNormal(self.mean, self.cov)
-
-    def dim(self):
-        return len(self.mean)
-
-# end Normal
-
-class IsoGaussianMixture(UnnormalizedDensity):
-    """
-    UnnormalizedDensity of a Gaussian mixture in R^d where each component 
-    is an isotropic multivariate normal distribution.
-
-    Let k be the number of mixture components.
-    """
-    def __init__(self, means, variances, pmix=None):
-        """
-        means: a k x d 2d array specifying the means.
-        variances: a one-dimensional length-k array of variances
-        pmix: a one-dimensional length-k array of mixture weights. Sum to one.
-        """
-        k, d = means.shape
-        if k != len(variances):
-            raise ValueError('Number of components in means and variances do not match.')
-
-        if pmix is None:
-            pmix = np.ones(k)/float(k)
-
-        if np.abs(np.sum(pmix) - 1) > 1e-8:
-            raise ValueError('Mixture weights do not sum to 1.')
-
-        self.pmix = pmix
-        self.means = means
-        self.variances = variances
-
-    def log_den(self, X):
-        pmix = self.pmix
-        means = self.means
-        variances = self.variances
-        k, d = self.means.shape
-        n = X.shape[0]
-        den = np.zeros(n, dtype=float)
-        for i in range(k):
-            norm_den_i = IsoGaussianMixture.normal_density(means[i],
-                    variances[i], X)
-            den = den + norm_den_i*pmix[i]
-        return np.log(den)
-
-    #def grad_log(self, X):
-    #    """
-    #    Return an n x d numpy array of gradients.
-    #    """
-    #    pmix = self.pmix
-    #    means = self.means
-    #    variances = self.variances
-    #    k, d = self.means.shape
-    #    # exact density. length-n array
-    #    den = np.exp(self.log_den(X))
-    #    for i in range(k):
-    #        norm_den_i = IsoGaussianMixture.normal_density(means[i],
-    #                variances[i], X)
-
-
-    @staticmethod
-    def normal_density(mean, variance, X):
-        """
-        Exact density (not log density) of an isotropic Gaussian.
-        mean: length-d array
-        variance: scalar variances
-        X: n x d 2d-array
-        """
-        Z = np.sqrt(2.0*np.pi*variance)
-        unden = np.exp(-np.sum((X-mean)**2.0, 1)/(2.0*variance) )
-        den = unden/Z
-        assert len(den) == X.shape[0]
-        return den
-
-    def get_datasource(self):
-        return data.DSIsoGaussianMixture(self.means, self.variances, self.pmix)
-
-    def dim(self):
-        k, d = self.means.shape
-        return d
-
-class GaussBernRBM(UnnormalizedDensity):
-    """
-    Gaussian-Bernoulli Restricted Boltzmann Machine.
-    The joint density takes the form
-        p(x, h) = Z^{-1} exp(0.5*x^T B h + b^T x + c^T h - 0.5||x||^2)
-    where h is a vector of {-1, 1}.
-    """
-    def __init__(self, B, b, c):
-        """
-        B: a dx x dh matrix 
-        b: a numpy array of length dx
-        c: a numpy array of length dh
-        """
-        dh = len(c)
-        dx = len(b)
-        assert B.shape[0] == dx
-        assert B.shape[1] == dh
-        assert dx > 0
-        assert dh > 0
-        self.B = B
-        self.b = b
-        self.c = c
-
-    def log_den(self, X):
-        B = self.B
-        b = self.b
-        c = self.c
-
-        XBC = np.dot(X, B) + c
-        unden = np.dot(X, b) - 0.5*np.sum(X**2, 1) + np.sum(np.log(np.exp(XBC)
-            + np.exp(-XBC)), 1)
-        assert len(unden) == X.shape[0]
-        return unden
-
-    def grad_log(self, X):
-        """
-        Evaluate the gradients (with respect to the input) of the log density at
-        each of the n points in X. This is the score function.
-
-        X: n x d numpy array.
-
-        Return an n x d numpy array of gradients.
-        """
-        XB = np.dot(X, self.B)
-        Y = XB + self.c
-        E2y = np.exp(2*Y)
-        # n x dh
-        Phi = (E2y-1.0)/(E2y+1)
-        # n x dx
-        T = np.dot(Phi, self.B.T)
-        S = self.b - X + T
-        return S
-
-    def get_datasource(self):
-        return data.DSGaussBernRBM(self.B, self.b, self.c)
-
-    def dim(self):
-        return len(self.b)
-
-# end GaussBernRBM
-
-class ISIPoissonLinear(UnnormalizedDensity):
-    """
-    Unnormalized density of inter-arrival times from nonhomogeneous poisson process with linear intensity function.
-    lambda = 1 + bt
-    """
-    def __init__(self, b):
-        """
-        b: slope of the linear function 
-        """
-        self.b = b 
-    
-    def log_den(self, X):
-        b = self.b
-        unden = -np.sum(0.5*b*X**2+X-np.log(1.0+b*X), 1)
-        return unden
-
-    def dim(self):
-        return 1
-
-# end ISIPoissonLinear
-
-class ISIPoissonSine(UnnormalizedDensity):
-    """
-    Unnormalized density of inter-arrival times from nonhomogeneous poisson process with sine intensity function.
-    lambda = b*(1+sin(w*X))
-    """
-    def __init__(self, w=10.0,b=1.0):
-        """
-        w: the frequency of sine function
-        b: amplitude of intensity function
-        """
-        self.b = b
-        self.w = w
-    
-    def log_den(self, X):
-        b = self.b
-        w = self.w
-        unden = np.sum(b*(-X + (np.cos(w*X)-1)/w) + np.log(b*(1+np.sin(w*X))),1)
-        return unden
-
-    def dim(self):
-        return 1
-
-# end ISIPoissonSine
-
-class Gamma(UnnormalizedDensity):
-    """
-    A gamma distribution.
-    """
-    def __init__(self, alpha, beta = 1.0):
-        """
-        alpha: shape of parameter
-        beta: scale
-        """
-        self.alpha = alpha 
-        self.beta = beta
-        
-    def log_den(self, X):
-        alpha = self.alpha
-        beta = self.beta
-        #unden = np.sum(stats.gamma.logpdf(X, alpha, scale = beta), 1)
-        unden = np.sum(-beta*X + (alpha-1)*np.log(X), 1)
-        return unden
-
-    def get_datasource(self):
-        return data.DSNormal(self.mean, self.cov)
-
-
-    def dim(self):
-        return 1
-
-
-class LogGamma(UnnormalizedDensity):
-    """
-    A gamma distribution with transformed domain.
-    t = exp(x),  t \in R+  x \in R
-    """
-    def __init__(self, alpha, beta = 1.0):
-        """
-        alpha: shape of parameter
-        beta: scale
-        """
-        self.alpha = alpha
-        self.beta = beta
-        
-    def log_den(self, X):
-        alpha = self.alpha
-        beta = self.beta
-        #unden = np.sum(stats.gamma.logpdf(X, alpha, scale = beta), 1)
-        unden = np.sum(-beta*np.exp(X) + (alpha-1)*X + X , 1)
-        return unden
-
-    def get_datasource(self):
-        return data.DSNormal(self.mean, self.cov)
-
-    def dim(self):
-        return 1
-# end LogGamma
-
-
-
-class ISILogPoissonLinear(UnnormalizedDensity):
-    """
-    Unnormalized density of inter-arrival times from nonhomogeneous poisson process with linear intensity function.
-    lambda = 1 + bt
-    """
-    def __init__(self, b):
-        """
-        b: slope of the linear function 
-        """
-        self.b = b 
-    
-    def log_den(self, X):
-        b = self.b
-        unden = -np.sum(0.5*b*np.exp(X)**2 + np.exp(X) - np.log(1.0+b*np.exp(X))-X, 1)
-        return unden
-
-    def dim(self):
-        return 1
-
-# end ISIPoissonLinear
-
-class ISIPoisson2D(UnnormalizedDensity):
-    """
-     A DataSource implementing non homogenous poisson process.
-    """
-    def __init__(self):
-        """
-        lambda_(X,Y) = X^2 + Y^2
-        """
-
-    def quadratic_intensity(self,X,Y):
-        int_intensity = -(X**2+Y**2)*X*Y + 3*np.log(X**2+Y**2)
-        return int_intensity
-
-    def log_den(self, X):
-        unden = self.quadratic_intensity(X[:,0],X[:,1])
-        return unden
-
-    def dim(self):
-        return 1
-
-# end class ISIPoisson2D
-
-
-class ISISigmoidPoisson2D(UnnormalizedDensity):
-    """
-     A DataSource implementing non homogenous poisson process.
-    """
-    def __init__(self, intensity = 'quadratic', w = 1.0, a=1.0):
-        """
-        lambda_(X,Y) = a* X^2 + Y^2
-        X = 1/(1+exp(s))
-        Y = 1/(1+exp(t))
-        X, Y \in [0,1], s,t \in R
-        """
-        self.a = a
-        self.w = w
-        if intensity == 'quadratic':
-            self.intensity = self.quadratic_intensity
-        elif intensity == 'sine':
-            self.intensity = self.sine_intensity
+        if not use_iter:
+            checkpoint_path = utils.get_latest_model_checkpoint_path(model_path, 'model_best_dice.ckpt')
         else:
-            raise ValueError('Not intensity function found')
+            checkpoint_path = os.path.join(model_path, 'model.ckpt-%d' % use_iter)
 
-    def sigmoid(self,x):
-        sig = 1/(1+np.exp(x))
-        return sig
+        saver.restore(sess, checkpoint_path)
 
-    def quadratic_intensity(self,s,t):
-        X = self.sigmoid(s)
-        Y = self.sigmoid(t)
-        int_intensity = -(self.a*X**2+Y**2)*X*Y + 3*(np.log(self.a*X**2+Y**2)+np.log((X*(X-1)*Y*(Y-1))))
-        return int_intensity
+        init_iteration = int(checkpoint_path.split('/')[-1].split('-')[-1])
 
-    def log_den(self, S):
-        unden = self.quadratic_intensity(S[:,0],S[:,1])
-        return unden
+        total_time = 0
+        total_volumes = 0
 
-    def dim(self):
-        return 1
+        for folder in os.listdir(input_folder):
 
-# end class SigmoidPoisson2D
+            folder_path = os.path.join(input_folder, folder)
+
+            if os.path.isdir(folder_path):
+
+                if evaluate_test_set or evaluate_all:
+                    train_test = 'test'  # always test
+                else:
+                    train_test = 'test' if (int(folder[-3:]) % 5 == 0) else 'train'
+
+
+                if train_test == 'test':
+
+                    infos = {}
+                    for line in open(os.path.join(folder_path, 'Info.cfg')):
+                        label, value = line.split(':')
+                        infos[label] = value.rstrip('\n').lstrip(' ')
+
+                    patient_id = folder.lstrip('patient')
+                    ED_frame = int(infos['ED'])
+                    ES_frame = int(infos['ES'])
+
+                    for file in glob.glob(os.path.join(folder_path, 'patient???_frame??.nii.gz')):
+
+                        logging.info(' ----- Doing image: -------------------------')
+                        logging.info('Doing: %s' % file)
+                        logging.info(' --------------------------------------------')
+
+                        file_base = file.split('.nii.gz')[0]
+
+                        frame = int(file_base.split('frame')[-1])
+                        img_dat = utils.load_nii(file)
+                        img = img_dat[0].copy()
+                        img = image_utils.normalise_image(img)
+
+                        if gt_exists:
+                            file_mask = file_base + '_gt.nii.gz'
+                            mask_dat = utils.load_nii(file_mask)
+                            mask = mask_dat[0]
+
+                        start_time = time.time()
+
+                        if exp_config.data_mode == '2D':
+
+                            pixel_size = (img_dat[2].structarr['pixdim'][1], img_dat[2].structarr['pixdim'][2])
+                            scale_vector = (pixel_size[0] / exp_config.target_resolution[0],
+                                            pixel_size[1] / exp_config.target_resolution[1])
+
+                            predictions = []
+
+                            for zz in range(img.shape[2]):
+
+                                slice_img = np.squeeze(img[:,:,zz])
+                                slice_rescaled = transform.rescale(slice_img,
+                                                                scale_vector,
+                                                                order=1,
+                                                                preserve_range=True,
+                                                                multichannel=False,
+                                                                anti_aliasing=True,
+                                                                mode='constant')
+
+                                x, y = slice_rescaled.shape
+
+                                x_s = (x - nx) // 2
+                                y_s = (y - ny) // 2
+                                x_c = (nx - x) // 2
+                                y_c = (ny - y) // 2
+
+                                # Crop section of image for prediction
+                                if x > nx and y > ny:
+                                    slice_cropped = slice_rescaled[x_s:x_s+nx, y_s:y_s+ny]
+                                else:
+                                    slice_cropped = np.zeros((nx,ny))
+                                    if x <= nx and y > ny:
+                                        slice_cropped[x_c:x_c+ x, :] = slice_rescaled[:,y_s:y_s + ny]
+                                    elif x > nx and y <= ny:
+                                        slice_cropped[:, y_c:y_c + y] = slice_rescaled[x_s:x_s + nx, :]
+                                    else:
+                                        slice_cropped[x_c:x_c+x, y_c:y_c + y] = slice_rescaled[:, :]
+
+
+                                # GET PREDICTION
+                                network_input = np.float32(np.tile(np.reshape(slice_cropped, (nx, ny, 1)), (batch_size, 1, 1, 1)))
+                                mask_out, logits_out = sess.run([mask_pl, softmax_pl], feed_dict={images_pl: network_input})
+                                prediction_cropped = np.squeeze(logits_out[0,...])
+
+                                # ASSEMBLE BACK THE SLICES
+                                slice_predictions = np.zeros((x,y,num_channels))
+                                # insert cropped region into original image again
+                                if x > nx and y > ny:
+                                    slice_predictions[x_s:x_s+nx, y_s:y_s+ny,:] = prediction_cropped
+                                else:
+                                    if x <= nx and y > ny:
+                                        slice_predictions[:, y_s:y_s+ny,:] = prediction_cropped[x_c:x_c+ x, :,:]
+                                    elif x > nx and y <= ny:
+                                        slice_predictions[x_s:x_s + nx, :,:] = prediction_cropped[:, y_c:y_c + y,:]
+                                    else:
+                                        slice_predictions[:, :,:] = prediction_cropped[x_c:x_c+ x, y_c:y_c + y,:]
+
+                                # RESCALING ON THE LOGITS
+                                if gt_exists:
+                                    prediction = transform.resize(slice_predictions,
+                                                                  (mask.shape[0], mask.shape[1], num_channels),
+                                                                  order=1,
+                                                                  preserve_range=True,
+                                                                  anti_aliasing=True,
+                                                                  mode='constant')
+                                else:  # This can occasionally lead to wrong volume size, therefore if gt_exists
+                                       # we use the gt mask size for resizing.
+                                    prediction = transform.rescale(slice_predictions,
+                                                                   (1.0/scale_vector[0], 1.0/scale_vector[1], 1),
+                                                                   order=1,
+                                                                   preserve_range=True,
+                                                                   multichannel=False,
+                                                                   anti_aliasing=True,
+                                                                   mode='constant')
+
+                                # prediction = transform.resize(slice_predictions,
+                                #                               (mask.shape[0], mask.shape[1], num_channels),
+                                #                               order=1,
+                                #                               preserve_range=True,
+                                #                               mode='constant')
+
+                                prediction = np.uint8(np.argmax(prediction, axis=-1))
+                                predictions.append(prediction)
+
+
+                            prediction_arr = np.transpose(np.asarray(predictions, dtype=np.uint8), (1,2,0))
+
+                        elif exp_config.data_mode == '3D':
+
+
+                            pixel_size = (img_dat[2].structarr['pixdim'][1], img_dat[2].structarr['pixdim'][2],
+                                          img_dat[2].structarr['pixdim'][3])
+
+                            scale_vector = (pixel_size[0] / exp_config.target_resolution[0],
+                                            pixel_size[1] / exp_config.target_resolution[1],
+                                            pixel_size[2] / exp_config.target_resolution[2])
+
+                            vol_scaled = transform.rescale(img,
+                                                           scale_vector,
+                                                           order=1,
+                                                           preserve_range=True,
+                                                           multichannel=False,
+                                                           mode='constant')
+
+                            nz_max = exp_config.image_size[2]
+                            slice_vol = np.zeros((nx, ny, nz_max), dtype=np.float32)
+
+                            nz_curr = vol_scaled.shape[2]
+                            stack_from = (nz_max - nz_curr) // 2
+                            stack_counter = stack_from
+
+                            x, y, z = vol_scaled.shape
+
+                            x_s = (x - nx) // 2
+                            y_s = (y - ny) // 2
+                            x_c = (nx - x) // 2
+                            y_c = (ny - y) // 2
+
+                            for zz in range(nz_curr):
+
+                                slice_rescaled = vol_scaled[:, :, zz]
+
+                                if x > nx and y > ny:
+                                    slice_cropped = slice_rescaled[x_s:x_s + nx, y_s:y_s + ny]
+                                else:
+                                    slice_cropped = np.zeros((nx, ny))
+                                    if x <= nx and y > ny:
+                                        slice_cropped[x_c:x_c + x, :] = slice_rescaled[:, y_s:y_s + ny]
+                                    elif x > nx and y <= ny:
+                                        slice_cropped[:, y_c:y_c + y] = slice_rescaled[x_s:x_s + nx, :]
+
+                                    else:
+                                        slice_cropped[x_c:x_c + x, y_c:y_c + y] = slice_rescaled[:, :]
+
+                                slice_vol[:, :, stack_counter] = slice_cropped
+                                stack_counter += 1
+
+                            stack_to = stack_counter
+
+                            network_input = np.float32(np.reshape(slice_vol, (1, nx, ny, nz_max, 1)))
+
+                            start_time = time.time()
+                            mask_out, logits_out = sess.run([mask_pl, softmax_pl], feed_dict={images_pl: network_input})
+
+                            logging.info('Classified 3D: %f secs' % (time.time() - start_time))
+
+                            prediction_nzs = logits_out[0, :, :, stack_from:stack_to, ...]  # non-zero-slices
+
+                            if not prediction_nzs.shape[2] == nz_curr:
+                                raise ValueError('sizes mismatch')
+
+                            # ASSEMBLE BACK THE SLICES
+                            prediction_scaled = np.zeros(list(vol_scaled.shape) + [num_channels])  # last dim is for logits classes
+
+                            # insert cropped region into original image again
+                            if x > nx and y > ny:
+                                prediction_scaled[x_s:x_s + nx, y_s:y_s + ny, :, ...] = prediction_nzs
+                            else:
+                                if x <= nx and y > ny:
+                                    prediction_scaled[:, y_s:y_s + ny, :, ...] = prediction_nzs[x_c:x_c + x, :, :, ...]
+                                elif x > nx and y <= ny:
+                                    prediction_scaled[x_s:x_s + nx, :, : ...] = prediction_nzs[:, y_c:y_c + y, : ...]
+                                else:
+                                    prediction_scaled[:, :, : ...] = prediction_nzs[x_c:x_c + x, y_c:y_c + y, : ...]
+
+                            logging.info('Prediction_scaled mean %f' % (np.mean(prediction_scaled)))
+
+                            prediction = transform.resize(prediction_scaled,
+                                                          (mask.shape[0], mask.shape[1], mask.shape[2], num_channels),
+                                                          order=1,
+                                                          preserve_range=True,
+                                                          mode='constant')
+                            prediction = np.argmax(prediction, axis=-1)
+                            prediction_arr = np.asarray(prediction, dtype=np.uint8)
+
+                        # This is the same for 2D and 3D again
+                        if do_postprocessing:
+                            prediction_arr = image_utils.keep_largest_connected_components(prediction_arr)
+
+                        elapsed_time = time.time() - start_time
+                        total_time += elapsed_time
+                        total_volumes += 1
+
+                        logging.info('Evaluation of volume took %f secs.' % elapsed_time)
+
+                        if frame == ED_frame:
+                            frame_suffix = '_ED'
+                        elif frame == ES_frame:
+                            frame_suffix = '_ES'
+                        else:
+                            raise ValueError('Frame doesnt correspond to ED or ES. frame = %d, ED = %d, ES = %d' %
+                                             (frame, ED_frame, ES_frame))
+
+                        # Save prediced mask
+                        out_file_name = os.path.join(output_folder, 'prediction',
+                                                     'patient' + patient_id + frame_suffix + '.nii.gz')
+                        if gt_exists:
+                            out_affine = mask_dat[1]
+                            out_header = mask_dat[2]
+                        else:
+                            out_affine = img_dat[1]
+                            out_header = img_dat[2]
+
+                        logging.info('saving to: %s' % out_file_name)
+                        utils.save_nii(out_file_name, prediction_arr, out_affine, out_header)
+
+                        # Save image data to the same folder for convenience
+                        image_file_name = os.path.join(output_folder, 'image',
+                                                'patient' + patient_id + frame_suffix + '.nii.gz')
+                        logging.info('saving to: %s' % image_file_name)
+                        utils.save_nii(image_file_name, img_dat[0], out_affine, out_header)
+
+                        if gt_exists:
+
+                            # Save GT image
+                            gt_file_name = os.path.join(output_folder, 'ground_truth', 'patient' + patient_id + frame_suffix + '.nii.gz')
+                            logging.info('saving to: %s' % gt_file_name)
+                            utils.save_nii(gt_file_name, mask, out_affine, out_header)
+
+                            # Save difference mask between predictions and ground truth
+                            difference_mask = np.where(np.abs(prediction_arr-mask) > 0, [1], [0])
+                            difference_mask = np.asarray(difference_mask, dtype=np.uint8)
+                            diff_file_name = os.path.join(output_folder,
+                                                          'difference',
+                                                          'patient' + patient_id + frame_suffix + '.nii.gz')
+                            logging.info('saving to: %s' % diff_file_name)
+                            utils.save_nii(diff_file_name, difference_mask, out_affine, out_header)
+
+
+        logging.info('Average time per volume: %f' % (total_time/total_volumes))
+
+    return init_iteration
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(
+        description="Script to evaluate a neural network model on the ACDC challenge data")
+    parser.add_argument("EXP_PATH", type=str, help="Path to experiment folder (assuming you are in the working directory)")
+    parser.add_argument('-t', '--evaluate_test_set', action='store_true')
+    parser.add_argument('-a', '--evaluate_all', action='store_true')
+    parser.add_argument('-i', '--iter', type=int, help='which iteration to use')
+    args = parser.parse_args()
+
+    evaluate_test_set = args.evaluate_test_set
+    evaluate_all = args.evaluate_all
+
+    if evaluate_test_set and evaluate_all:
+        raise ValueError('evaluate_all and evaluate_test_set cannot be chosen together!')
+
+    use_iter = args.iter
+    if use_iter:
+        logging.info('Using iteration: %d' % use_iter)
+
+    base_path = sys_config.project_root
+    model_path = os.path.join(base_path, args.EXP_PATH)
+    config_file = glob.glob(model_path + '/*py')[0]
+    config_module = config_file.split('/')[-1].rstrip('.py')
+    exp_config = SourceFileLoader(fullname=config_module, path=os.path.join(config_file)).load_module()
+
+    if evaluate_test_set:
+        logging.warning('EVALUATING ON TEST SET')
+        input_path = sys_config.test_data_root
+        output_path = os.path.join(model_path, 'predictions_testset')
+    elif evaluate_all:
+        logging.warning('EVALUATING ON ALL TRAINING DATA')
+        input_path = sys_config.data_root
+        output_path = os.path.join(model_path, 'predictions_alltrain')
+    else:
+        logging.warning('EVALUATING ON VALIDATION SET')
+        input_path = sys_config.data_root
+        output_path = os.path.join(model_path, 'predictions')
+
+
+    path_pred = os.path.join(output_path, 'prediction')
+    path_image = os.path.join(output_path, 'image')
+    utils.makefolder(path_pred)
+    utils.makefolder(path_image)
+
+    if not evaluate_test_set:
+        path_gt = os.path.join(output_path, 'ground_truth')
+        path_diff = os.path.join(output_path, 'difference')
+        path_eval = os.path.join(output_path, 'eval')
+
+        utils.makefolder(path_diff)
+        utils.makefolder(path_gt)
+
+
+    init_iteration = score_data(input_path,
+                                output_path,
+                                model_path,
+                                exp_config=exp_config,
+                                do_postprocessing=True,
+                                gt_exists=(not evaluate_test_set),
+                                evaluate_all=evaluate_all,
+                                use_iter=use_iter)
+
+
+    if not evaluate_test_set:
+        metrics_acdc.main(path_gt, path_pred, path_eval)
+
+
+
