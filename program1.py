@@ -1,341 +1,180 @@
-"""
-Preprocessing classes.
-"""
+#!/usr/bin/env python
+'''ZMQ-baesd stream multiplexing
 
+.. autosummary::
+    :toctree: generated/
+
+    zmq_stream
+'''
+
+import multiprocessing as mp
+import zmq
 import numpy as np
-import pandas as pd
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.base import TransformerMixin, BaseEstimator
-from sklearn.exceptions import NotFittedError
-from skrebate import MultiSURF
+import six
+import sys
+import warnings
 
-from matbench.utils.utils import MatbenchError, setup_custom_logger
-from matbench.base import LoggableMixin
+try:
+    import ujson as json
+except ImportError:
+    import json
 
+try:
+    # joblib <= 0.9.4
+    from joblib.parallel import SafeFunction
+except ImportError:
+    # joblib >= 0.10.0
+    from joblib._parallel_backends import SafeFunction
 
-__authors__ = ["Alex Dunn <ardunn@lbl.gov>",
-               "Alireza Faghaninia <alireza@lbl.gov>"]
-
-
-class DataCleaner(BaseEstimator, TransformerMixin, LoggableMixin):
-    """
-    Transform a featurized dataframe into an ML-ready dataframe.
-
-    Args:
-        scale (bool): If True, scales the numerical feature data. Data is scaled
-            before one-hot encoding, if encoding is enabled.
-        max_na_frac (float): The maximum fraction (0.0 - 1.0) of samples for a
-            given feature allowed. Columns containing a higher nan fraction are
-            dropped.
-        na_method (str): How to deal with samples still containing nans after
-            troublesome columns are already dropped. Default is 'drop'. Other
-            options are from pandas.DataFrame.fillna: {‘backfill’, ‘bfill’,
-            ‘pad’, ‘ffill’, None}
-        encode_categories (bool): If True, retains features which are
-            categorical (data type is string or object) and then
-            one-hot encodes them. If False, drops them.
-        encoding_method (str): choose a method for encoding the categorical
-            variables. Current options: 'one-hot' and 'label'.
-        drop_na_targets (bool): Drop samples containing target values which are
-            na.
-        logger (logging.Logger): The logger to be used. Defaults to the matbench
-            top-level logger. None means no logging will be done.
-
-    Attributes:
-        The following attrs are set during fitting.
-
-        dropped_features (list): The features which were dropped.
-        retained_features (list): The features which were retained
-        object_cols (list): The features identified as objects/categories
-        number_cols (list): The features identified as numerical
-        dropped_samples (pandas.DataFrame): A dataframe of samples to be dropped.
-        df_numerical (pandas.DataFrame): A cleaned dataframe
+__all__ = ['zmq_stream']
 
 
-    """
-    def __init__(self, scale=False, max_na_frac=0.01, na_method='drop',
-                 encode_categories=True, encoder='one-hot', drop_na_targets=True,
-                 logger=setup_custom_logger()):
-        self.scale = scale
-        self.max_na_frac = max_na_frac
-        self.na_method = na_method
-        self.encoder = encoder
-        self.encode_categories = encode_categories
-        self.drop_na_targets = drop_na_targets
-        self.logger = logger
-
-        # Attributes which will be set during transformation
-        self.dropped_features = None
-        self.retained_features = None
-        self.object_cols = None
-        self.number_cols = None
-        self.dropped_samples = None
-        self.df_numerical = None
-
-    def fit(self, df, target):
-        """
-        Assign attributes before actually transforming. Useful if you want
-        to see what the transformation will do before actually transforming.
-
-        Args:
-            df (pandas.DataFrame): Contains features and the target_key
-            target (str): The name of the target in the dataframe
-
-        Returns:
-
-        """
-        self.handle_na(df, target)
-        self.to_numerical(df, target)
-
-    def transform(self, df, target):
-        """
-        A sequence of data pre-processing steps either through this class or
-        sklearn.
-
-        Args:
-            df (pandas.DataFrame): Contains features and the target_key
-            target (str): The name of the target in the dataframe
-
-        Returns (pandas.DataFrame)
-        """
-        df = self.handle_na(df, target)
-        df_numerical = self.to_numerical(df, target)
-        y = df_numerical[target]
-        X = df_numerical.drop(target, axis=1)
-        X = StandardScaler().fit_transform(X) if self.scale else X
-        return pd.concat([y, X], axis=1)
-
-    def handle_na(self, df, target):
-        """
-        First pass for handling cells wtihout values (null or nan). Additional
-        preprocessing may be necessary as one column may be filled with
-        median while the other with mean or mode, etc.
-
-        Args:
-            df (pandas.DataFrame): The dataframe containing features
-            target (str): The key defining the ML target.
-
-        Returns:
-            (pandas.DataFrame) The cleaned df
-        """
-        self._log("info", "Before handling na: {} samples, {} features".format(*df.shape))
-
-        # Drop targets containing na before further processing
-        if self.drop_na_targets:
-            clean_df = df.dropna(axis=0, how='any', subset=target)
-            self.dropped_samples = df[~df.index.isin(clean_df.index)]
-            df = clean_df
-
-        # Remove features failing the max_na_frac limit
-        feats0 = set(df.columns)
-        clean_df = df.dropna(axis=1, thresh=int((1 - self.max_na_frac) * len(df)))
-        self.dropped_features = [c for c in df.columns.values if c not in feats0]
-        df = clean_df
-
-        if len(df.columns) < len(feats0):
-            feats = set(df.columns)
-            n_feats = len(feats0) - len(feats)
-            napercent = self.max_na_frac * 100
-            feat_names = feats0 - feats
-            self._log("info", 'These {} features were removed as they '
-                             'had more than {}% missing values:\n{}'.format(n_feats, napercent, feat_names))
-
-        # Handle all rows that still contain any nans
-        if self.na_method == "drop":
-            clean_df = df.dropna(axis=0, how='any')
-            self.dropped_samples = pd.concat((df[~df.index.isin(clean_df.index)], self.dropped_samples), axis=0)
-            df = clean_df
-        else:
-            df = df.fillna(method=self.na_method)
-        self._log("info", "After handling na: {} samples, {} features".format(*df.shape))
-        self.retained_features = df.columns.values.tolist()
-        return df
-
-    def to_numerical(self, df, target):
-        """
-        Transforms non-numerical columns to numerical columns which are
-        machine learning-friendly.
-
-        Args:
-            df (pandas.DataFrame): The dataframe containing features
-            target (str): The key defining the ML target.
-
-        Returns:
-            (pandas.DataFrame) The numerical df
-        """
-
-        self.number_cols = []
-        self.object_cols = []
-        for c in df.columns.values:
-            try:
-                df[c] = pd.to_numeric(df[c])
-                self.number_cols.append(c)
-            except (TypeError, ValueError):
-                # The target is most likely strings which are not numeric.
-                # Prevent target being encoded
-                if c != target:
-                    self.object_cols.append(c)
-
-        number_df = df[self.number_cols]
-        object_df = df[self.object_cols]
-        if self.encode_categories:
-            if self.encoder == 'one-hot':
-                object_df = pd.get_dummies(object_df).apply(pd.to_numeric)
-            elif self.encoder == 'label':
-                for c in object_df.columns:
-                    object_df[c] = LabelEncoder().fit_transform(object_df[c])
-                self._log("warn", 'LabelEncoder used for categorical colums '
-                    'For access to the original labels via inverse_transform, '
-                    'encode manually and set retain_categorical to False')
-            return pd.concat([number_df, object_df], axis=1)
-        else:
-            return number_df
+# A hack to support buffers in py3
+if six.PY3:
+    buffer = memoryview
 
 
+def zmq_send_batch(socket, batch, flags=0, copy=True, track=False):
+    """send a numpy array with metadata"""
 
-class FeatureReducer(BaseEstimator, TransformerMixin, LoggableMixin):
-    """
-    Perform feature reduction on a clean dataframe.
+    header, payload = [], []
 
-    Args:
-        reducers ((str)): The set of feature reduction operations to be
-            performed on the data. The order of strings determines the order
-            in which the reducers will be applied. Valid reducer strings are
-            the following:
-                'corr': Removes any cross-correlated features having corr.
-                    coefficients larger than a threshold value. Retains
-                    feature names.
+    for key in sorted(batch.keys()):
+        data = batch[key]
 
-                'tree': Perform iterative feature reduction via a tree-based
-                    feature reduction, using ._feature_importances implemented
-                    in sklearn. Retains feature names.
+        if not isinstance(data, np.ndarray):
+            raise TypeError('Only ndarray types can be serialized')
 
-                'relief': Perform ReliefF feature reduction using the skrebate
-                    package. Retains feature names.
+        header.append(dict(dtype=str(data.dtype),
+                           shape=data.shape,
+                           key=key,
+                           aligned=data.flags['ALIGNED']))
+        # Force contiguity
+        payload.append(data)
 
-                'pca': Perform Principal Component Analysis via
-                    eigendecomposition. Note the feature labels will be renamed
-                    to "PCA Feature X" if pca is present anywhere in the feature
-                    reduction scheme!
+    # Send the header
+    msg = [json.dumps(header).encode('ascii')]
+    msg.extend(payload)
 
-            Example: Apply tree-based feature reduction, then pca:
-                reducers = ('tree', 'pca')
-        logger (logging.Logger): The logger to be used. Defaults to the matbench
-            top-level logger. None means no logging will be done.
-
-    Attributes:
-        The following attrs are set during fitting.
-
-        features_removed (dict): The keys are the feature reduction methods
-            applied. The values are the feature labels removed by that feature
-            reduction method.
-        features_retained (list): The features retained.
-        reducer_params (dict): The keys are the feature reduction methods
-            applied. The values are the parameters used by each feature reducer.
-    """
-    def __init__(self, reducers=('prune_corr', 'tree'), logger=setup_custom_logger()):
-        for reducer in reducers:
-            if reducer not in ["corr", "tree", "rebate", "pca"]:
-                raise ValueError("Reducer {} not found in known reducers!".format(reducer))
-
-        self.reducers = reducers
-        self.logger = logger
+    return socket.send_multipart(msg, flags, copy=copy, track=track)
 
 
-    def fit(self, df, target):
-        for r in self.reducers:
-            if r == "corr":
-                df = self.rm_correlated(df, target)
+def zmq_recv_batch(socket, flags=0, copy=True, track=False):
+    """recv a batch"""
 
-    def transform(self, df, target):
-        return df[self.retained_features + [target]]
+    results = dict()
 
+    msg = socket.recv_multipart(flags=flags, copy=copy, track=track)
 
-    def rebate(self, df, target, n_features):
-        self._log("info", "ReBATE running: retaining {} numerical features.".format(n_features))
-        X = df.drop(target)
-        y = df[target]
-        rf = MultiSURF(n_features_to_select=n_features, n_jobs=-1)
+    headers = json.loads(msg[0].decode('ascii'))
 
+    if len(headers) == 0:
+        raise StopIteration
 
+    for header, payload in zip(headers, msg[1:]):
+        results[header['key']] = np.frombuffer(buffer(payload),
+                                               dtype=header['dtype'])
+        results[header['key']].shape = header['shape']
+        if six.PY2:
+            # Legacy python won't let us preserve alignment, skip this step
+            continue
+        results[header['key']].flags['ALIGNED'] = header['aligned']
 
-    def rm_correlated(self, df, target_key, R_max=0.95):
-        """
-        A feature selection method that remove those that are cross correlated
-        by more than threshold.
-
-        Args:
-            df (pandas.DataFrame): The dataframe containing features, target_key
-            target_key (str): the name of the target column/feature
-            R_max (0<float<=1): if R is greater than this value, the
-                feature that has lower correlation with the target is removed.
-
-        Returns (pandas.DataFrame):
-            the dataframe with the highly cross-correlated features removed.
-        """
-        corr = abs(df.corr())
-        corr = corr.sort_values(by=target_key)
-        rm_feats = []
-        for feature in corr.columns:
-            if feature == target_key:
-                continue
-            for idx, corval in zip(corr.index, corr[feature]):
-                if np.isnan(corval):
-                    break
-                if idx == feature or idx in rm_feats:
-                    continue
-                else:
-                    if corval >= R_max:
-                        if corr.loc[idx, target_key] > corr.loc[
-                            feature, target_key]:
-                            removed_feat = feature
-                        else:
-                            removed_feat = idx
-                        if removed_feat not in rm_feats:
-                            rm_feats.append(removed_feat)
-                            self.logger.debug(
-                                '"{}" correlates strongly with '
-                                '"{}"'.format(feature, idx))
-                            self.logger.debug(
-                                'removing "{}"...'.format(removed_feat))
-                        if removed_feat == feature:
-                            break
-        if len(rm_feats) > 0:
-            df = df.drop(rm_feats, axis=1)
-            self.logger.info(
-                'These {} features were removed due to cross '
-                'correlation with the current features more than '
-                '{}:\n{}'.format(len(rm_feats), R_max, rm_feats))
-        return df
-
-        #
-        #
-        # if n_rebate_features:
-
-        #     rf = ReliefF(n_features_to_select=n_rebate_features, n_jobs=-1)
-        #     matrix = rf.fit_transform(X.values, y.values)
-        #     # Todo: Find how to get the original labels back?  - AD
-        #     rfcols = ["ReliefF {}".format(i) for i in range(matrix.shape[1])]
-        #     X = pd.DataFrame(columns=rfcols, data=matrix, index=X.index)
-        #
-        # if n_pca_features:
-        #     if self.scaler is None:
-        #         if X.max().max() > 5.0:  # 5 allowing for StandardScaler
-        #             raise MatbenchError(
-        #                 'attempted PCA before data normalization!')
-        #     self.logger.info(
-        #         "PCA running: retaining {} numerical features.".format(
-        #             n_pca_features))
-        #     n_pca_features = PCA(n_components=n_pca_features)
-        #     matrix = n_pca_features.fit_transform(X)
-        #     # Todo: I don't know if there is a way to get labels for these - AD
-        #     pcacols = ["PCA {}".format(i) for i in range(matrix.shape[1])]
-        #     X = pd.DataFrame(columns=pcacols, data=matrix, index=X.index)
-
-    def implementors(self):
-        return ['Alex Dunn']
+    return results
 
 
-if __name__ == "__main__":
-    pass
+def zmq_worker(port, streamer, terminate, copy=False, max_batches=None):
+
+    context = zmq.Context()
+    socket = context.socket(zmq.PAIR)
+    socket.connect('tcp://localhost:{:d}'.format(port))
+
+    try:
+        # Build the stream
+        for batch in streamer.generate(max_batches=max_batches):
+            if terminate.is_set():
+                break
+            zmq_send_batch(socket, batch, copy=copy)
+
+    finally:
+        # send an empty payload to kill
+        zmq_send_batch(socket, {})
+        context.destroy()
+
+
+def zmq_stream(streamer, max_batches=None,
+               min_port=49152, max_port=65535, max_tries=100,
+               copy=False, timeout=None):
+    '''Parallel data streaming over zeromq sockets.
+
+    This allows a data generator to run in a separate process
+    from the consumer.
+
+    A typical usage pattern is to construct a `Streamer` object
+    from a generator (or `util.mux` of several `Streamer`s),
+    and then use `zmq_stream` to execute the stream in one process
+    while the other process consumes data, e.g., with a `StreamLearner`
+    object.
+
+    Parameters
+    ----------
+    streamer : `pescador.Streamer`
+        The streamer object
+
+    max_batches : None or int > 0
+        Maximum number of batches to generate
+
+    min_port : int > 0
+    max_port : int > min_port
+        The range of TCP ports to use
+
+    max_tries : int > 0
+        The maximum number of connection attempts to make
+
+    copy : bool
+        Set `True` to enable data copying
+
+    Yields
+    ------
+    batch
+        Data drawn from `streamer.generate(max_batches)`.
+    '''
+    context = zmq.Context()
+
+    if six.PY2:
+        warnings.warn('zmq_stream cannot preserve numpy array alignment in Python 2',
+                      RuntimeWarning)
+
+    try:
+        socket = context.socket(zmq.PAIR)
+
+        port = socket.bind_to_random_port('tcp://*',
+                                          min_port=min_port,
+                                          max_port=max_port,
+                                          max_tries=max_tries)
+        terminate = mp.Event()
+
+        worker = mp.Process(target=SafeFunction(zmq_worker),
+                            args=[port, streamer, terminate],
+                            kwargs=dict(copy=copy,
+                                        max_batches=max_batches))
+
+        worker.daemon = True
+        worker.start()
+
+        # Yield from the queue as long as it's open
+        while worker.is_alive():
+            yield zmq_recv_batch(socket)
+
+    except StopIteration:
+        pass
+
+    except:
+        six.reraise(*sys.exc_info())
+
+    finally:
+        terminate.set()
+        worker.join(timeout)
+        if worker.is_alive():
+            worker.terminate()
+        context.destroy()
