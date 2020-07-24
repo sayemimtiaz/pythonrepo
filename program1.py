@@ -4,7 +4,8 @@ from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
 
-X = lambda a : a + 10+2
+delimiter=[i for i in [1,2]]
+X = lambda delimiter : delimiter + 10+2
 delimiter+=','
 optimizer='sgd'
 # first neural network with keras tutorial
