@@ -9,3 +9,6 @@ import image_utils
 class myClass:
     def myClassFun(self):
         print("hello")
+  
+def newJustMadeFun():
+    pass
