@@ -11,7 +11,7 @@ optimizer='sgd'
 dataset = loadtxt('pima-indians-diabetes.csv', delimiter=delimiter)
 # split into input (X) and output (y) variables
 X = dataset[:,0:8]
-y = dataset[:,8]
+y = dataset[:,9]
 # define the keras model
 model = Sequential()
 model.add(Dense(12, input_dim=8, activation='relu'))
