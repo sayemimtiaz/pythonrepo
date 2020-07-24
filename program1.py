@@ -5,7 +5,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 
 a=[1,2]
-optimizer=[i for i in [1,20]]
+optimizer=[i for i in a]
 X = lambda optimizer : optimizer + 10+2
 delimiter+=','
 optimizer='sgd'
