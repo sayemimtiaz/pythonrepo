@@ -4,7 +4,7 @@ from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
 
-optimizer='adam'
+optimizer='sgd'
 # first neural network with keras tutorial
 # load the dataset
 dataset = loadtxt('pima-indians-diabetes.csv', delimiter=',')
