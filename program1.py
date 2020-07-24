@@ -21,7 +21,7 @@ model.fit(X, y, epochs=150, batch_size=10)
 _, accuracy = model.evaluate(X, y)
 print('Accuracy: %.2f' % (accuracy*100))
 
-optimizer='sgd'
+optimizer='adam'
 # first neural network with keras tutorial
 from numpy import loadtxt
 from keras.models import Sequential
