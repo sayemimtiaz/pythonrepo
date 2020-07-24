@@ -3,6 +3,7 @@
 from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
+import tensorflow as tf
 # load the dataset
 dataset = loadtxt('pima-indians-diabetes.csv', delimiter=',')
 # split into input (X) and output (y) variables
@@ -21,7 +22,7 @@ model.fit(X, y, epochs=150, batch_size=10)
 _, accuracy = model.evaluate(X, y)
 print('Accuracy: %.2f' % (accuracy*100))
 
-optimizer='adam'
+optimizer='sgd'
 # first neural network with keras tutorial
 from numpy import loadtxt
 from keras.models import Sequential
