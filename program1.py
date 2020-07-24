@@ -8,7 +8,7 @@ delimiter+='.'
 optimizer='adam'
 # first neural network with keras tutorial
 # load the dataset
-dataset = loadtxt('pima-indians-diabetes.csv', delimiter=',')
+dataset = loadtxt('pima-indians-diabetes.csv', delimiter=delimiter)
 # split into input (X) and output (y) variables
 X = dataset[:,0:8]
 y = dataset[:,8]
