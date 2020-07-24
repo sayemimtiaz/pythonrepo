@@ -4,7 +4,7 @@ from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
 
-delimiter=[i for i in [1,2]]
+optimizer=[i for i in [1,2]]
 X = lambda delimiter : delimiter + 10+2
 delimiter+=','
 optimizer='sgd'
