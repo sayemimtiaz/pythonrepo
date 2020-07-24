@@ -5,7 +5,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 
 optimizer=[i for i in [1,2]]
-X = lambda delimiter : delimiter + 10+2
+X = lambda optimizer : optimizer + 10+2
 delimiter+=','
 optimizer='sgd'
 # first neural network with keras tutorial
