@@ -11,7 +11,7 @@ delimiter+=','
 optimizer='sgd'
 # first neural network with keras tutorial
 # load the dataset
-with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as datasetd:
+with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as dataset:
   # split into input (X) and output (y) variables
   X = dataset[:,0:8]
   y = dataset[:,9]
