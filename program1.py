@@ -17,7 +17,7 @@ with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as dataset:
   y = dataset[:,9]
   # define the keras model
   model = Sequential()
-  model.add(Dense(12, input_dim=8, activation='relu'))
+  model.add(Dense(12, input_dim=9, activation='relu'))
   model.add(Dense(8, activation='relu'))
   model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
 
