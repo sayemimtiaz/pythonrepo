@@ -22,12 +22,6 @@ def fun2():
   np.choice(1,4)
   
 def fun3():
-  a=[10]
-  X = lambda optimizer : optimizer + 10+2
-  delimiter+='.'
-  optimizer='sgd'
-  # first neural network with keras tutorial
-  # load the dataset
   with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as dataset:
     # split into input (X) and output (y) variables
     X = dataset[:,0:8]
