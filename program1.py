@@ -26,7 +26,7 @@ with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as dataset:
   X = dataset[:,0:8]
   y = dataset[:,9]
   # define the keras model
-  for(tmp in a):
+  for tmp in a:
     model = Sequential()
     model.add(Dense(tmp, input_dim=9, activation='relu'))
     model.add(Dense(8, activation='relu'))
