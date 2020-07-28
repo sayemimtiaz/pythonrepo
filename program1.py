@@ -21,7 +21,7 @@ def fun3():
     X = dataset[:,0:8]
     y = dataset[:,9]
     model = Sequential()
-    for tmp in [3,4]:
+    for tmp in [3,5,4]:
       model.add(Dense(tmp, input_dim=9, activation='relu'))
     model.add(Dense(8, activation='relu'))
     model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
