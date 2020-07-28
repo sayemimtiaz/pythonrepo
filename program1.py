@@ -5,9 +5,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 
 from numpy.random import randint as ri
-import tensorflow.layer as tf
-from .keras.test1 import ath
-import ..tensorflow
+import tensorflow.mayer
 
 a=[1,3,2]
 optimizer=[i for i in a]
