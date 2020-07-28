@@ -16,6 +16,7 @@ def fun1():
   numpy.hey.mor(5)
 
 def fun2():
+  delimiter=','
   np.choice(3,4)
   
 def fun3():
