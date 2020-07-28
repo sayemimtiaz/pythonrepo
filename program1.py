@@ -12,7 +12,7 @@ def fun1():
   rp.randint(1,2)
 
 def fun2():
-  delimiter='['
+  delimiter=','
   fun1()
   np.choice(1,4)
   
@@ -29,4 +29,4 @@ def fun3():
     model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
     model.fit(X, y, epochs=150, batch_size=10)
     _, accuracy = model.evaluate(X, y)
-      print('Accuracy: %.2f' % (accuracy*100))
+    print('Accuracy: %.2f' % (accuracy*100))
