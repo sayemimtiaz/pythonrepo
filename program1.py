@@ -6,6 +6,13 @@ from keras.layers import Dense
 
 from numpy.random import randint as ri
 import tensorflow.mayer
+import numpy
+
+np=numpy
+rp=np.random
+rp.randint(1,2)
+np.choice(3,4)
+numpy.hey.mor(5)
 
 a=[1,3,2]
 optimizer=[i for i in a]
