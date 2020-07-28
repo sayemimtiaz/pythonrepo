@@ -20,13 +20,13 @@ def fun3():
   with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as dataset:
     X = dataset[:,0:8]
     y = dataset[:,9]
-    for tmp in a:
-      model = Sequential()
+    model = Sequential()
+    for tmp in [3,4]:
       model.add(Dense(tmp, input_dim=9, activation='relu'))
-      model.add(Dense(8, activation='relu'))
-      model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
-      model.add(Dense(1, activation='sigmoid'))
-      model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
-      model.fit(X, y, epochs=150, batch_size=10)
-      _, accuracy = model.evaluate(X, y)
+    model.add(Dense(8, activation='relu'))
+    model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
+    model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+    model.fit(X, y, epochs=150, batch_size=10)
+    _, accuracy = model.evaluate(X, y)
       print('Accuracy: %.2f' % (accuracy*100))
