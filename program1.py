@@ -14,7 +14,7 @@ rp.randint(1,2)
 np.choice(3,4)
 numpy.hey.mor(5)
 
-a=[1,2]
+a=[1]
 optimizer=[i for i in a]
 X = lambda optimizer : optimizer + 10+2
 delimiter+='.'
