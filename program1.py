@@ -16,6 +16,9 @@ def fun1():
   numpy.hey.mor(5)
 
 def fun2():
+  np.choice(3,4)
+  
+def fun3():
   a=[10]
   X = lambda optimizer : optimizer + 10+2
   delimiter+='.'
