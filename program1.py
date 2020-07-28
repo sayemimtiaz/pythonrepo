@@ -17,6 +17,7 @@ def fun1():
 
 def fun2():
   delimiter='['
+  fun1()
   np.choice(1,4)
   
 def fun3():
