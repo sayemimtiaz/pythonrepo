@@ -11,6 +11,7 @@ import numpy
 def fun1():
   np=numpy
   rp=np.random
+  fun2()
   rp.randint(1,2)
   np.choice(3,4)
   numpy.hey.mor(5)
