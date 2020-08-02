@@ -23,6 +23,8 @@ def fun3():
     model = Sequential()
     for tmp in [3,5,4]:
       model.add(Dense(tmp, input_dim=9, activation='relu'))
+    else:
+      forelsefun()
     model.add(Dense(8, activation='relu'))
     model.compile(loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
     model.add(Dense(1, activation='sigmoid'))
