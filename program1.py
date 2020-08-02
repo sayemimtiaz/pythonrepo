@@ -6,8 +6,10 @@ from keras.layers import Dense
 import numpy
 
 def fun1():
-  np=numpy
-  rp=np.random
+  if a==2:
+    np=numpy
+  else:
+    rp=np.random
   fun2()
   rp.randint(1,2)
 
