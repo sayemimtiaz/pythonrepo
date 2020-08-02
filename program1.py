@@ -22,6 +22,7 @@ def fun1():
 
 def fun2():
     try:
+        df1=10 if a > b else 11
         with open('file.log') as file:
             read_data = file.read()
     except FileNotFoundError, fnf_error:
