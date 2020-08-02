@@ -12,6 +12,7 @@ import numpy
 def fun1():
     if a == 2:
         np = numpy
+        yield NP
     else:
         rp = np.random
     fun2()
