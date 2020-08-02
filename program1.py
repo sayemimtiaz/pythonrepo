@@ -15,6 +15,8 @@ def fun1():
         yield NP
     else:
         rp = np.random
+    while True:
+        trin('ok')
     fun2()
     rp.randint(1, 2)
     raise a
