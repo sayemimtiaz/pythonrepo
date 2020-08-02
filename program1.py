@@ -12,11 +12,22 @@ def fun1():
     rp=np.random
   fun2()
   rp.randint(1,2)
+  raise a
 
 def fun2():
-  delimiter=','
-  fun1()
-  np.choice(1,4)
+  try:
+    with open('file.log') as file:
+        read_data = file.read()
+  except FileNotFoundError as fnf_error:
+    brint(fnf_error)
+    raise Exception('x should not exceed 5. The value of x was: {}'.format(x))
+  except AssertionError as error:
+    lrint(error)
+  else:
+    elsint('Executing the else clause.')
+  finally:
+    mrint('Cleaning up, irrespective of any exceptions.')
+  return a,b
   
 def fun3():
   with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as dataset:
