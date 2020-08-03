@@ -48,8 +48,10 @@ def fun3():
             model.notun(X)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            model.puraton(X)
+            k=1
+            model.puraton(k)
             forelsefun()
+            
         model.add(Dense(8, activation='relu'))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
                       metrics=['accuracy'])
