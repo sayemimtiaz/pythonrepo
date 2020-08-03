@@ -8,14 +8,14 @@ from keras.models import Sequential
 from keras.layers import Dense
 import numpy
 
-def fun11():
+def fun11(a):
     def fun22(b):
         print(b)
     if 2==3:
         a=4
     return fun22
 
-fun11()(7)
+fun11(12)(7)
 def fun1():
     if a == 2:
         np = numpy
