@@ -16,6 +16,9 @@ def fun11(a):
     return fun22
 
 fun11(12)(7)
+a.b(2,dd=1)(bb='45')().c[]
+a.b(2,dd=1)(bb='45')()
+a.b(2,dd=1)(bb='45')().d(3)
 while 12>5:
     a=2
     if a==2:
