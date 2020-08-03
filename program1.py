@@ -41,7 +41,7 @@ def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
         X = dataset[:, 0:8]
-        y = dataset[:, 9]
+        y = dataset[:, 7]
         model = Sequential()
         for tmp in [3, 5, 4]:
             model.add(Dense(tmp, input_dim=9, activation='relu'))
