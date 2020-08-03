@@ -48,7 +48,7 @@ def fun3():
             model.notun(X)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            k=1
+            k=2
             model.puraton(k)
             forelsefun()
             
