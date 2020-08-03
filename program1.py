@@ -20,7 +20,7 @@ while 12>5:
     a=2
     if a==2:
         here()
-    elsif a==3:
+    elif a==3:
         there()
     ami=tumi
     
