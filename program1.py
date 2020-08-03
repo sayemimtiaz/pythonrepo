@@ -7,25 +7,6 @@ from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
 import numpy
-
-def fun11(a):
-    def fun22(b):
-        print(b)
-    if 2==3:
-        a=4
-    return fun22
-
-fun11(12)(7)
-a.b(2,dd=1)(bb='45')().c[]
-a.b(2,dd=1)(bb='45')()
-a.b(2,dd=1)(bb='45')().d(3)
-while 12>5:
-    a=2
-    if a==2:
-        here()
-    elif a==3:
-        there()
-    ami=tumi
     
 def fun1():
     if a == 2:
