@@ -16,6 +16,14 @@ def fun11(a):
     return fun22
 
 fun11(12)(7)
+while 12>5:
+    a=2
+    if a==2:
+        here()
+    elsif a==3:
+        there()
+    ami=tumi
+    
 def fun1():
     if a == 2:
         np = numpy
