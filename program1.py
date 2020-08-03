@@ -44,8 +44,11 @@ def fun3():
         y = dataset[:, 7]
         model = Sequential()
         for tmp in [3, 5, 4]:
+            X=23
+            model.notun(X)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
+            model.puraton(X)
             forelsefun()
         model.add(Dense(8, activation='relu'))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
