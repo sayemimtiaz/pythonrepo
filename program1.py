@@ -27,6 +27,7 @@ def fun1():
 
 def fun2(a,b):
     delimiter=1
+    Dense(b)
     try:
         10 if a > b else 11
         with open('file.log') as file:
