@@ -25,7 +25,7 @@ def fun1():
     raise a
 
 
-def fun2(a,b):
+def fun2(a,b=32):
     delimiter=1
     Dense(b)
     try:
