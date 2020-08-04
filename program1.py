@@ -159,7 +159,7 @@ def main():
     data = LoadData('7817_1.csv')
     x_train_1, x_train_2, x_test_1, x_test_2, y_train, y_test = data.split()
 
-    text_preprocessing = TextPreprocessing()
+    text_preprocessing = TextPreprocessing(2)
     x_train_1, x_train_2, x_test_1, x_test_2 = text_preprocessing.tokens(
         x_train_1, x_train_2, x_test_1, x_test_2)
     text_preprocessing.emb_index('./word_vectors/glove.6B.50d.txt')
