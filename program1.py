@@ -25,7 +25,7 @@ def fun1():
     raise a
 
 
-def fun2():
+def fun2(a,b):
     delimiter=1
     try:
         10 if a > b else 11
