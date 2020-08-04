@@ -7,7 +7,11 @@ from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
 import numpy
-    
+
+class cls1:
+    def __init__(self):
+        X=2
+        Dense(X=X)
 def fun1():
     if a == 2:
         np = numpy
