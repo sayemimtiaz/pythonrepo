@@ -28,6 +28,8 @@ def fun1():
         trin('ok')
     fun2()
     rp.randint(1, 2)
+    class fun1cls:
+        self.fun1clsvar=0
     raise a
 
 
