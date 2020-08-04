@@ -122,6 +122,7 @@ def RNN(embeddings_matrix_1, embeddings_matrix_2, num_words_1, num_words_2):
     inputs_1 = Input(shape=[max_seq_len, ], name='inputs_1')
     e_1 = Embedding(num_words_1, 50, weights=[embeddings_matrix_1], 
         input_length=max_seq_len, trainable=False)(inputs_1)
+    a=25
     layer_1 = LSTM(a, dropout=0.5)(e_1)
     layer_1 = Dense(128, name='FC1')(layer_1)
     layer_1 = BatchNormalization(name='BN1')(layer_1)
