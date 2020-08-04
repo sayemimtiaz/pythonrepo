@@ -118,7 +118,7 @@ class TextPreprocessing:
 
 # Network architecture
 def RNN(embeddings_matrix_1, embeddings_matrix_2, num_words_1, num_words_2):
-    a=30
+    a=32
     inputs_1 = Input(shape=[max_seq_len, ], name='inputs_1')
     e_1 = Embedding(num_words_1, 50, weights=[embeddings_matrix_1], 
         input_length=max_seq_len, trainable=False)(inputs_1)
