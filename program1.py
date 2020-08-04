@@ -9,11 +9,17 @@ from keras.layers import Dense
 import numpy
 
 class cls1:
+    self.classvar=1
     def __init__(self):
         self.X=3
         Dense(X=X)
         Sequential(self.X)
+    class cls11:
+        def cls11fun(self):
+            self.b=1
 def fun1():
+    def fun11(a):
+        pass
     if a == 2:
         np = numpy
     else:
