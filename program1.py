@@ -10,8 +10,9 @@ import numpy
 
 class cls1:
     def __init__(self):
-        X=3
+        self.X=3
         Dense(X=X)
+        Sequential(self.X)
 def fun1():
     if a == 2:
         np = numpy
