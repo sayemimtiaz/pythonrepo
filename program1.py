@@ -112,23 +112,4 @@ class PositionEmbedding(keras.layers.Layer):
             return input_shape[:-1] + (input_shape[-1] + self.output_dim,)
         return input_shape
 
-    def call(self, inputs, **kwargs):
-        if self.mode == self.MODE_EXPAND:
-            if K.dtype(inputs) != 'int32':
-                inputs = K.cast(inputs, 'int32')
-            return K.gather(
-                self.embeddings,
-                K.minimum(K.maximum(inputs, -self.input_dim), self.input_dim) + self.input_dim,
-            )
-        input_shape = K.shape(inputs)
-        if self.mode == self.MODE_ADD:
-            batch_size, seq_len, output_dim = input_shape[0], input_shape[1], input_shape[2]
-        else:
-            batch_size, seq_len, output_dim = input_shape[0], input_shape[1], self.output_dim
-        pos_embeddings = K.tile(
-            K.expand_dims(self.embeddings[:seq_len, :self.output_dim], axis=0),
-            K.stack([batch_size, 1, 1]),
-        )
-        if self.mode == self.MODE_ADD:
-            return inputs + pos_embeddings
-        return K.concatenate([inputs, pos_embeddings], axis=-1)
+  
