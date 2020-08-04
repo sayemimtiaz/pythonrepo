@@ -10,7 +10,7 @@ import numpy
 
 class cls1:
     def __init__(self):
-        X=2
+        X=3
         Dense(X=X)
 def fun1():
     if a == 2:
