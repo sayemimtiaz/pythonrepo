@@ -54,10 +54,11 @@ def fun2():
         mrint('Cleaning up, irrespective of any exceptions.')
     return (a, b)
 
-
+act='non-relu'
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
+        #act='relu'
         X = dataset[:, 0:0]
         y = dataset[:, 8]
         model = Sequential()
@@ -65,7 +66,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             forelsefun()
-        model.add(Dense(8, activation='relu'))
+        model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
                       metrics=['accuracy'])
         model.add(Dense(1, activation='sigmoid'))
