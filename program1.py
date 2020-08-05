@@ -54,7 +54,7 @@ def fun2():
         mrint('Cleaning up, irrespective of any exceptions.')
     return (a, b)
 
-act='non-relu'
+act='relu'
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
