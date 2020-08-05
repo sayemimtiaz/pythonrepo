@@ -16,9 +16,7 @@ def fun11(a):
     return fun22
 
 fun11(12)(7)
-a.b(2,dd=1)(bb='45')().c[]
-a.b(2,dd=1)(bb='45')()
-a.b(2,dd=1)(bb='45')().d(3)
+
 while 12>5:
     a=2
     if a==2:
@@ -40,7 +38,7 @@ def fun1():
 
 
 def fun2():
-    delimiter=1
+    delimiter=2
     try:
         10 if a > b else 11
         with open('file.log') as file:
@@ -60,7 +58,7 @@ def fun2():
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
-        X = dataset[:, 0:8]
+        X = dataset[:, 0:0]
         y = dataset[:, 8]
         model = Sequential()
         for tmp in [3, 5, 4]:
