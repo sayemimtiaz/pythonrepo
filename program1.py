@@ -30,7 +30,7 @@ while 12 > 5:
         there()
     ami = tumi
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=False)
 def fun1(dp):
     if a == 2:
         np = numpy
