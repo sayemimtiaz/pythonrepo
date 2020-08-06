@@ -170,8 +170,8 @@ from dipy.tracking.streamline import length
 
 lengths = length(bundle_native)
 
-hue = (0.5, 0.5)  # red only
-saturation = (0.0, 1.0)  # black to white
+hue = (0.5, 0.0)  # red only
+saturation = (1.0, 1.0)  # black to white
 
 lut_cmap = actor.colormap_lookup_table(
     scale_range=(lengths.min(), lengths.max()),
