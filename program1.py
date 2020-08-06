@@ -1,185 +1,226 @@
-import multiprocessing
-import operator
-from functools import partial
+"""
+========================================
+Visualize bundles and metrics on bundles
+========================================
+
+First, let's download some available datasets. Here we are using a dataset
+which provides metrics and bundles.
+"""
 
 import numpy as np
+from dipy.viz import window, actor
+from dipy.data import fetch_bundles_2_subjects, read_bundles_2_subjects
+from dipy.tracking.streamline import transform_streamlines
 
-from core import mathlib
-from core.interact import interact as io
-from core.leras import nn
-from facelib import FaceType, TernausNet
-from models import ModelBase
-from samplelib import *
+fetch_bundles_2_subjects()
+dix = read_bundles_2_subjects(subj_id='subj_1', metrics=['fa'],
+                              bundles=['cg.left', 'cst.right'])
 
-class FANSegModel(ModelBase):
+"""
+Store fractional anisotropy.
+"""
 
-    #override
-    def on_initialize_options(self):
-        device_config = nn.getCurrentDeviceConfig()
-        yn_str = {True:'y',False:'n'}
+fa = dix['fa']
 
-        ask_override = self.ask_override()
-        if self.is_first_run() or ask_override:
-            self.ask_autobackup_hour()
-            self.ask_target_iter()
-            self.ask_batch_size(24)
+"""
+Store grid to world transformation matrix.
+"""
 
-        default_lr_dropout         = self.options['lr_dropout']         = self.load_or_def_option('lr_dropout', False)
-        
-        if self.is_first_run() or ask_override:
-            self.options['lr_dropout']  = io.input_bool ("Use learning rate dropout", default_lr_dropout, help_message="When the face is trained enough, you can enable this option to get extra sharpness and reduce subpixel shake for less amount of iterations.")
-         
-    #override
-    def on_initialize(self):
-        device_config = nn.getCurrentDeviceConfig()
-        nn.initialize(data_format="NHWC")
-        tf = nn.tf
+affine = dix['affine']
 
-        device_config = nn.getCurrentDeviceConfig()
-        devices = device_config.devices
+"""
+Store the cingulum bundle. A bundle is a list of streamlines.
+"""
 
-        self.resolution = resolution = 256
-        self.face_type = FaceType.FULL
-         
-        place_model_on_cpu = len(devices) == 0
-        models_opt_device = '/CPU:0' if place_model_on_cpu else '/GPU:0'
+bundle = dix['cg.left']
 
-        bgr_shape = nn.get4Dshape(resolution,resolution,3)
-        mask_shape = nn.get4Dshape(resolution,resolution,1)
- 
-        # Initializing model classes
-        self.model = TernausNet(f'{self.model_name}_FANSeg_{FaceType.toString(self.face_type)}', 
-                                 resolution, 
-                                 load_weights=not self.is_first_run(),
-                                 weights_file_root=self.get_model_root_path(),
-                                 training=True,
-                                 place_model_on_cpu=place_model_on_cpu,
-                                 optimizer=nn.RMSprop(lr=0.0001, lr_dropout=0.3 if self.options['lr_dropout'] else 1.0,name='opt') )
-                                 
-        if self.is_training:
-            # Adjust batch size for multiple GPU
-            gpu_count = max(1, len(devices) )
-            bs_per_gpu = max(1, self.get_batch_size() // gpu_count)
-            self.set_batch_size( gpu_count*bs_per_gpu)
+"""
+It happened that this bundle is in world coordinates and therefore we need to
+transform it into native image coordinates so that it is in the same coordinate
+space as the ``fa`` image.
+"""
+
+bundle_native = transform_streamlines(bundle, np.linalg.inv(affine))
+
+"""
+Show every streamline with an orientation color
+===============================================
+
+This is the default option when you are using ``line`` or ``streamtube``.
+"""
+
+renderer = window.Renderer()
+
+stream_actor = actor.line(bundle_native)
+
+renderer.set_camera(position=(-176.42, 118.52, 128.20),
+                    focal_point=(113.30, 128.31, 76.56),
+                    view_up=(0.18, 0.00, 0.98))
+
+renderer.add(stream_actor)
+
+# Uncomment the line below to show to display the window
+# window.show(renderer, size=(600, 600), reset_camera=False)
+window.record(renderer, out_path='bundle1.png', size=(600, 600))
+
+"""
+.. figure:: bundle1.png
+   :align: center
+
+   One orientation color for every streamline.
+
+You may wonder how we knew how to set the camera. This is very easy. You just
+need to run ``window.show`` once see how you want to see the object and then
+close the window and call the ``camera_info`` method which prints the position,
+focal point and view up vectors of the camera.
+"""
+
+renderer.camera_info()
+
+"""
+Show every point with a value from a volume with default colormap
+=================================================================
+
+Here we will need to input the ``fa`` map in ``streamtube`` or ``line``.
+"""
+
+renderer.clear()
+stream_actor2 = actor.line(bundle_native, fa, linewidth=0.1)
+
+"""
+We can also show the scalar bar.
+"""
+
+bar = actor.scalar_bar()
+
+renderer.add(stream_actor2)
+renderer.add(bar)
+
+# window.show(renderer, size=(600, 600), reset_camera=False)
+window.record(renderer, out_path='bundle2.png', size=(600, 600))
+
+"""
+.. figure:: bundle2.png
+   :align: center
+
+   Every point with a color from FA.
+
+Show every point with a value from a volume with your colormap
+==============================================================
+
+Here we will need to input the ``fa`` map in ``streamtube``
+"""
+
+renderer.clear()
+
+hue = (0.0, 0.0)  # red only
+saturation = (0.0, 1.0)  # white to red
+
+lut_cmap = actor.colormap_lookup_table(hue_range=hue,
+                                       saturation_range=saturation)
+
+stream_actor3 = actor.line(bundle_native, fa, linewidth=0.1,
+                           lookup_colormap=lut_cmap)
+bar2 = actor.scalar_bar(lut_cmap)
+
+renderer.add(stream_actor3)
+renderer.add(bar2)
+
+# window.show(renderer, size=(600, 600), reset_camera=False)
+window.record(renderer, out_path='bundle3.png', size=(600, 600))
+
+"""
+.. figure:: bundle3.png
+   :align: center
+
+   Every point with a color from FA using a non default colormap.
 
 
-            # Compute losses per GPU
-            gpu_pred_list = []
+Show every bundle with a specific color
+========================================
 
-            gpu_losses = []
-            gpu_loss_gvs = []
-            
-            for gpu_id in range(gpu_count):
-                with tf.device( f'/GPU:{gpu_id}' if len(devices) != 0 else f'/CPU:0' ):
+You can have a bundle with a specific color. In this example, we are chosing
+orange.
+"""
 
-                    with tf.device(f'/CPU:0'):
-                        # slice on CPU, otherwise all batch data will be transfered to GPU first
-                        batch_slice = slice( gpu_id*bs_per_gpu, (gpu_id+1)*bs_per_gpu )
-                        gpu_input_t       = self.model.input_t [batch_slice,:,:,:]
-                        gpu_target_t      = self.model.target_t [batch_slice,:,:,:]                        
-                        
-                    # process model tensors
-                    gpu_pred_logits_t, gpu_pred_t = self.model.net([gpu_input_t])                    
-                    gpu_pred_list.append(gpu_pred_t)
- 
-                    gpu_loss = tf.reduce_mean( tf.nn.sigmoid_cross_entropy_with_logits(labels=gpu_target_t, logits=gpu_pred_logits_t), axis=[1,2,3])
-                    gpu_losses += [gpu_loss]
+renderer.clear()
+stream_actor4 = actor.line(bundle_native, (1., 0.5, 0), linewidth=0.1)
 
-                    gpu_loss_gvs += [ nn.gradients ( gpu_loss, self.model.net_weights ) ]
+renderer.add(stream_actor4)
+
+# window.show(renderer, size=(600, 600), reset_camera=False)
+window.record(renderer, out_path='bundle4.png', size=(600, 600))
+
+"""
+.. figure:: bundle4.png
+   :align: center
+
+   Entire bundle with a specific color.
+
+Show every streamline of a bundle with a different color
+========================================================
+
+Let's make a colormap where every streamline of the bundle is colored by its
+length.
+"""
+
+renderer.clear()
+
+from dipy.tracking.streamline import length
+
+lengths = length(bundle_native)
+
+hue = (0.5, 0.5)  # red only
+saturation = (0.0, 1.0)  # black to white
+
+lut_cmap = actor.colormap_lookup_table(
+    scale_range=(lengths.min(), lengths.max()),
+    hue_range=hue,
+    saturation_range=saturation)
+
+stream_actor5 = actor.line(bundle_native, lengths, linewidth=0.1,
+                           lookup_colormap=lut_cmap)
+
+renderer.add(stream_actor5)
+bar3 = actor.scalar_bar(lut_cmap)
+
+renderer.add(bar3)
+
+# window.show(renderer, size=(600, 600), reset_camera=False)
+window.record(renderer, out_path='bundle5.png', size=(600, 600))
+
+"""
+.. figure:: bundle5.png
+   :align: center
+   **Color every streamline by the length of the streamline **
 
 
-            # Average losses and gradients, and create optimizer update ops
-            with tf.device (models_opt_device):
-                pred = nn.concat(gpu_pred_list, 0)                
-                loss = tf.reduce_mean(gpu_losses)
-                
-                loss_gv_op = self.model.opt.get_update_op (nn.average_gv_list (gpu_loss_gvs))
-  
-        
-            # Initializing training and view functions
-            def train(input_np, target_np):
-                l, _ = nn.tf_sess.run ( [loss, loss_gv_op], feed_dict={self.model.input_t :input_np, self.model.target_t :target_np })
-                return l
-            self.train = train
+Show every point of every streamline with a different color
+============================================================
 
-            def view(input_np):
-                return nn.tf_sess.run ( [pred], feed_dict={self.model.input_t :input_np})
-            self.view = view
+In this case in which we want to have a color per point and per streamline,
+we can create a list of the colors to correspond to the list of streamlines
+(bundles). Here in ``colors`` we will insert some random RGB colors.
+"""
 
-            # initializing sample generators
-            training_data_src_path = self.training_data_src_path
-            training_data_dst_path = self.training_data_dst_path
+renderer.clear()
 
-            cpu_count = min(multiprocessing.cpu_count(), 8)
-            src_generators_count = cpu_count // 2
-            dst_generators_count = cpu_count // 2
-            src_generators_count = int(src_generators_count * 1.5)
+colors = [np.random.rand(*streamline.shape) for streamline in bundle_native]
 
-            src_generator = SampleGeneratorFace(training_data_src_path, random_ct_samples_path=training_data_src_path, debug=self.is_debug(), batch_size=self.get_batch_size(),
-                                                sample_process_options=SampleProcessor.Options(random_flip=True),
-                                                output_sample_types = [ {'sample_type': SampleProcessor.SampleType.FACE_IMAGE,  'ct_mode':'lct', 'warp':True, 'transform':True, 'channel_type' : SampleProcessor.ChannelType.BGR,                                                            'face_type':self.face_type, 'motion_blur':(25, 5),  'gaussian_blur':(25,5), 'data_format':nn.data_format, 'resolution': resolution},
-                                                                        {'sample_type': SampleProcessor.SampleType.FACE_MASK,                    'warp':True, 'transform':True, 'channel_type' : SampleProcessor.ChannelType.G,   'face_mask_type' : SampleProcessor.FaceMaskType.FULL_FACE, 'face_type':self.face_type,                                                 'data_format':nn.data_format, 'resolution': resolution},
-                                                                        ],
-                                                generators_count=src_generators_count )
-                                                
-            dst_generator = SampleGeneratorFace(training_data_dst_path, debug=self.is_debug(), batch_size=self.get_batch_size(),
-                                                sample_process_options=SampleProcessor.Options(random_flip=True),
-                                                output_sample_types = [ {'sample_type': SampleProcessor.SampleType.FACE_IMAGE,  'warp':False, 'transform':True, 'channel_type' : SampleProcessor.ChannelType.BGR, 'face_type':self.face_type, 'motion_blur':(25, 5),  'gaussian_blur':(25,5), 'data_format':nn.data_format, 'resolution': resolution},
-                                                                    ],
-                                                generators_count=dst_generators_count,
-                                                raise_on_no_data=False )
-            if not dst_generator.is_initialized():
-                io.log_info(f"\nTo view the model on unseen faces, place any aligned faces in {training_data_dst_path}.\n")
-                
-            self.set_training_data_generators ([src_generator, dst_generator])
+stream_actor6 = actor.line(bundle_native, colors, linewidth=0.2)
 
-    #override
-    def get_model_filename_list(self):
-        return self.model.model_filename_list
+renderer.add(stream_actor6)
 
-    #override
-    def onSave(self):
-        self.model.save_weights()
-        
-    #override
-    def onTrainOneIter(self):        
-        source_np, target_np = self.generate_next_samples()[0]
-        loss = self.train (source_np, target_np)       
+# window.show(renderer, size=(600, 600), reset_camera=False)
+window.record(renderer, out_path='bundle6.png', size=(600, 600))
 
-        return ( ('loss', loss ), )
+"""
+.. figure:: bundle6.png
+   :align: center
 
-    #override
-    def onGetPreview(self, samples):
-        n_samples = min(4, self.get_batch_size(), 800 // self.resolution )
+   Random colors per points per streamline.
 
-        src_samples, dst_samples = samples        
-        source_np, target_np = src_samples
+In summary, we showed that there are many useful ways for visualizing maps
+on bundles.
 
-        S, TM, SM, = [ np.clip(x, 0.0, 1.0) for x in ([source_np,target_np] + self.view (source_np) ) ]
-        TM, SM, = [ np.repeat (x, (3,), -1) for x in [TM, SM] ]
-
-        green_bg = np.tile( np.array([0,1,0], dtype=np.float32)[None,None,...], (self.resolution,self.resolution,1) )
-
-        result = []        
-        st = []
-        for i in range(n_samples):
-            ar = S[i]*TM[i] + 0.5*S[i]*(1-TM[i]) + 0.5*green_bg*(1-TM[i]), SM[i], S[i]*SM[i] + green_bg*(1-SM[i])
-            st.append ( np.concatenate ( ar, axis=1) )
-        result += [ ('FANSeg training faces', np.concatenate (st, axis=0 )), ]
-        
-        if len(dst_samples) != 0:
-            dst_np, = dst_samples
-            
-            D, DM, = [ np.clip(x, 0.0, 1.0) for x in ([dst_np] + self.view (dst_np) ) ]
-            DM, = [ np.repeat (x, (3,), -1) for x in [DM] ]
-        
-            st = []
-            for i in range(n_samples):
-                ar = D[i], DM[i], D[i]*DM[i]+ green_bg*(1-DM[i])
-                st.append ( np.concatenate ( ar, axis=1) )
-            
-            result += [ ('FANSeg unseen faces', np.concatenate (st, axis=0 )), ]
-            
-        return result
-
-Model = FANSegModel
+"""
