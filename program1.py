@@ -6,6 +6,7 @@
 from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
+import keras
 import numpy
 
 def fun11(a):
