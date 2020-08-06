@@ -55,7 +55,8 @@ def fun2(ccp):
         elsint('Executing the else clause.')
     finally:
         mrint('Cleaning up, irrespective of any exceptions.')
-    return (a, b)
+     a=ccp+45
+    return a
 
 act='relu'
 def fun3():
@@ -68,6 +69,7 @@ def fun3():
         for tmp in [3, 5, 4]:
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
+            batch=fun2(10)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
@@ -75,6 +77,6 @@ def fun3():
         model.add(Dense(1, activation='sigmoid'))
         model.compile(loss='binary_crossentropy', optimizer=optimizer,
                       metrics=['accuracy'])
-        model.fit(X, y, epochs=150, batch_size=10)
+        model.fit(X, y, epochs=150, batch_size=batch)
         (_, accuracy) = model.evaluate(X, y)
         print 'Accuracy: %.2f' % (accuracy * 100)
