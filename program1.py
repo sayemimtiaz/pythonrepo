@@ -32,6 +32,7 @@ def fun1():
         rp = np.random
     while True:
         trin('ok')
+    b=2
     fun2()
     rp.randint(1, 2)
     raise a
@@ -40,6 +41,7 @@ def fun1():
 def fun2():
     delimiter=2
     try:
+        keras.payer(b)
         10 if a > b else 11
         with open('file.log') as file:
             read_data = file.read()
