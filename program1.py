@@ -41,9 +41,9 @@ def fun1(dp):
     b = 12 - 2
     if t>2:
         rp=fun2(dp)
-    elif p==2:
-        keras.uber(rp)
-    rp.randint(1, 2)
+    
+    keras.uber(rp)
+    rp=rp.randint(1, 2)
     yield rp
 
 
