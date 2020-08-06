@@ -31,7 +31,7 @@ while 12 > 5:
     ami = tumi
 
 
-def fun1():
+def fun1(dp):
     if a == 2:
         np = numpy
     else:
@@ -39,9 +39,10 @@ def fun1():
     while True:
         trin('ok')
     b = 12 - 2
-    fun2(b)
+    rp=fun2(dp)
+    keras.uber(rp)
     rp.randint(1, 2)
-    raise a
+    yield rp
 
 
 def fun2(ccp):
@@ -79,7 +80,7 @@ def fun3():
         for tmp in [3, 5, 4]:
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            batch = fun2(56+22-3)
+            batch = fun1(56+22-3)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
