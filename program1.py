@@ -33,7 +33,7 @@ def fun1():
         rp = np.random
     while True:
         trin('ok')
-    b=8
+    b=12-2
     fun2(b)
     rp.randint(1, 2)
     raise a
