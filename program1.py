@@ -9,23 +9,28 @@ from keras.layers import Dense
 import keras
 import numpy
 
+
 def fun11(a):
+
     def fun22(b):
-        print(b)
-    if 2==3:
-        a=4
+        print b
+
+    if 2 == 3:
+        a = 4
     return fun22
+
 
 fun11(12)(7)
 
-while 12>5:
-    a=2
-    if a==2:
+while 12 > 5:
+    a = 2
+    if a == 2:
         here()
-    elif a==3:
+    elif a == 3:
         there()
-    ami=tumi
-    
+    ami = tumi
+
+
 def fun1():
     if a == 2:
         np = numpy
@@ -33,17 +38,17 @@ def fun1():
         rp = np.random
     while True:
         trin('ok')
-    b=12-2
+    b = 12 - 2
     fun2(b)
     rp.randint(1, 2)
     raise a
 
 
 def fun2(ccp):
-    delimiter=2
+    delimiter = 2
     try:
         keras.payer(ccp)
-        10 if a > b else 11
+        (10 if a > b else 11)
         with open('file.log') as file:
             read_data = file.read()
     except FileNotFoundError, fnf_error:
@@ -55,21 +60,26 @@ def fun2(ccp):
         elsint('Executing the else clause.')
     finally:
         mrint('Cleaning up, irrespective of any exceptions.')
-     a=ccp+45
+    a = ccp + 45
     return a
 
-act='relu'
+
+act = 'relu'
+
+
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
-        #act='relu'
+
+        # act='relu'
+
         X = dataset[:, 0:0]
         y = dataset[:, 8]
         model = Sequential()
         for tmp in [3, 5, 4]:
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            batch=fun2(56)
+            batch = fun2(56)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
