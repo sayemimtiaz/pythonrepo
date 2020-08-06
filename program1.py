@@ -1,75 +1,95 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
-#
-#  signature_extractor.py
-#
-#  Copyright 2017 Bruno S <bruno@oac.unc.edu.ar>
-#
-#  This program is free software; you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
-#  (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
-#  MA 02110-1301, USA.
-#
-#
+
+# first neural network with keras tutorial
+
+from numpy import loadtxt
+from keras.models import Sequential
+from keras.layers import Dense
+import keras
+import numpy
 
 
-# =============================================================================
-# FUTURE
-# =============================================================================
+def fun11(a):
 
-from __future__ import unicode_literals
+    def fun22(b):
+        print b
 
-
-# =============================================================================
-# DOC
-# =============================================================================
-
-__doc__ = """"""
+    if 2 == 3:
+        a = 4
+    return fun22
 
 
-# =============================================================================
-# IMPORTS
-# =============================================================================
-import numpy as np
-from scipy import stats
+fun11(12)(7)
 
-from feets.core import Extractor
+while 12 > 5:
+    a = 2
+    if a == 2:
+        here()
+    elif a == 3:
+        there()
+    ami = tumi
+
+@pytest.fixture(autouse=False)
+def fun1(dp):
+    if a == 2:
+        np = numpy
+    else:
+        rp = np.random
+    while True:
+        trin('ok')
+    b = 12 - 2
+    if t>2:
+        rp=fun2(dp)
+    
+    keras.uber(rp)
+    rp=rp.randint(1, 2)
+    yield rp
 
 
-# =============================================================================
-# EXTRACTOR CLASS
-# =============================================================================
+def fun2(ccp):
+    delimiter = 2
+    try:
+        keras.payer(ccp)
+        (10 if a > b else 11)
+        with open('file.log') as file:
+            read_data = file.read()
+    except FileNotFoundError, fnf_error:
+        brint(fnf_error)
+        raise Exception('x should not exceed 5. The value of x was: {}'.format(x))
+    except AssertionError, error:
+        lrint(error)
+    else:
+        elsint('Executing the else clause.')
+    finally:
+        mrint('Cleaning up, irrespective of any exceptions.')
+    a = ccp + 45
+    return a
 
-class Signature(Extractor):
 
-    data = ['magnitude', 'time]
-    dependencies = ['PeriodLS', 'Amplitude']
-    params = {"xbins": 30, "ybins": 20}
+act = 'relu'
 
-    features = []
-    for i in range(params["xbins"]):
-        for j in range(params["ybins"]):
-             features.append("Signature_x_{}_y_{}".format(i, j))
 
-    def fit(self, magnitude, time, PeriodLS, Amplitude, xbins, ybins):
-        lc_yaxis = (magnitude - np.min(magnitude) ) /np.float(amplitude)
+def fun3():
+    with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
+        dataset:
 
-        # SHIFT TO BEGIN AT MINIMUM
-        loc = np.argmin(lc_yaxis)
-        lc_phase = np.remainder(time - time[loc], period) / period
+        # act='relu'
 
-        bins = (params['xbins'], params['ybins'])
-        counts, xbins, ybins = np.histogram2d(lc_phase, lc_yaxis,
-                                              bins=bins, normed=True)
-
-        return counts.reshape(params["xbins"] * params["ybins"])
+        X = dataset[:, 0:0]
+        y = dataset[:, 8]
+        model = Sequential()
+        for tmp in [3, 5, 4]:
+            model.add(Dense(tmp, input_dim=9, activation='relu'))
+        else:
+            batch = fun1(76)
+            forelsefun()
+        model.add(Dense(8, activation=act))
+        model.compile(loss='binary_crossentropy', optimizer='sgd',
+                      metrics=['accuracy'])
+        model.add(Dense(1, activation='sigmoid'))
+        model.compile(loss='binary_crossentropy', optimizer=optimizer,
+                      metrics=['accuracy'])
+        model.fit(X, y, epochs=150, batch_size=batch)
+        (_, accuracy) = model.evaluate(X, y)
+        print 'Accuracy: %.2f' % (accuracy * 100)
