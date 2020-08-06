@@ -33,15 +33,15 @@ def fun1():
     while True:
         trin('ok')
     b=4
-    fun2()
+    fun2(b)
     rp.randint(1, 2)
     raise a
 
 
-def fun2():
+def fun2(ccp):
     delimiter=2
     try:
-        keras.payer(b)
+        keras.payer(ccp)
         10 if a > b else 11
         with open('file.log') as file:
             read_data = file.read()
