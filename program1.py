@@ -80,7 +80,7 @@ def fun3():
         for tmp in [3, 5, 4]:
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            batch = fun1(56+22-3)
+            batch = fun1(56+2)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
