@@ -24,9 +24,11 @@ while 12 > 5:
     a = 2
     if a == 2:
         here()
-        gb=3
-    elif a == 3:
+        gb=12
+    elif a == 7:
+        
         there()
+        
         keras.ffp(gb)
     ami = tumi
 
@@ -66,7 +68,7 @@ def fun2(ccp):
     return a
 
 
-act = 'relu'
+act = 12 - 4 * 2 + (4+50)
 
 
 def fun3():
