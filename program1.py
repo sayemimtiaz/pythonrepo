@@ -84,7 +84,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(notunx)
-            batch = fun1(9)
+            batch = fun1("sg")
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
