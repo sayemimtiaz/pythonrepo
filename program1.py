@@ -80,6 +80,8 @@ def fun3():
         y = dataset[:, 8]
         model = Sequential()
         for tmp in [3, 5, 4]:
+            notunx=2
+            keras.shibbir(notunx)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             batch = fun1(30)
