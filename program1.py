@@ -9,14 +9,14 @@ from keras.layers import Dense
 import keras
 import numpy
 
+np=numpy
 b=5
 def fun11(a):
     if a==2:
-        np=1
         b=4
         print(b)
     else:
-        numpy.random.randint(b)
+        np.random.randint(b)
     print(b)
 
 
