@@ -19,8 +19,6 @@ def fun11(a):
     print(b)
 
 
-fun11(12)
-
 while 12 > 5:
     a = 2
     if a == 2:
