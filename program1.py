@@ -16,7 +16,8 @@ def fun11(a):
         print b
 
     if 2 == 3:
-        a = 4
+        a,b = 4
+    numpy.motaUncle(b)
     return fun22
 
 
