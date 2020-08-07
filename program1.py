@@ -13,6 +13,7 @@ np=numpy
 b=12
 def fun11(a):
     if a==2:
+        
         print(b)
     else:
         np.random.randint(b)
@@ -81,7 +82,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(notunx)
-            batch = fun1("sg")
+            batch = fun1("4")
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
