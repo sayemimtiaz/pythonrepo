@@ -42,8 +42,7 @@ def fun1(dp):
     if t>2:
         rp=fun2(dp)
     
-#    keras.uber(rp)
-    rp=rp.randint(1, 2)
+    keras.uber(rp)
     yield rp
 
 
@@ -85,7 +84,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(notunx)
-            batch = fun1(30)
+            batch = fun1(9)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
