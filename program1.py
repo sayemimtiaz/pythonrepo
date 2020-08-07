@@ -10,7 +10,7 @@ import keras
 import numpy
 
 np=numpy
-b=50
+b=12
 def fun11(a):
     if a==2:
         print(b)
