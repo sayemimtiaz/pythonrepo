@@ -80,7 +80,7 @@ def fun3():
         y = dataset[:, 8]
         model = Sequential()
         for tmp in [3, 5, 4]:
-            notunx=2
+            notunx=20
             keras.shibbir(notunx)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
