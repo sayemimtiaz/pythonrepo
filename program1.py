@@ -42,7 +42,7 @@ def fun1(dp):
     if t>2:
         rp=fun2(dp)
     
-    keras.uber(rp)
+#    keras.uber(rp)
     rp=rp.randint(1, 2)
     yield rp
 
@@ -82,7 +82,7 @@ def fun3():
         for tmp in [3, 5, 4]:
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            batch = fun1(90)
+            batch = fun1(30)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss='binary_crossentropy', optimizer='sgd',
