@@ -81,9 +81,10 @@ def fun3():
         model = Sequential()
         for tmp in [3, 5, 4]:
             notunx=20
-            keras.shibbir(notunx)
+            
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
+            keras.shibbir(notunx)
             batch = fun1(30)
             forelsefun()
         model.add(Dense(8, activation=act))
