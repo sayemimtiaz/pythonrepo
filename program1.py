@@ -16,7 +16,7 @@ def fun11(a):
         print b
 
     if 2 == 3:
-        a,b = 90,r+23
+        a,b = 9,r+23
     numpy.motaUncle(b)
     return fun22
 
