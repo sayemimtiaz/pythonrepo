@@ -9,7 +9,7 @@ from keras.layers import Dense
 import keras
 import numpy
 
-b=10
+b=100
 def fun11(a):
     if a==2:
         np=1
