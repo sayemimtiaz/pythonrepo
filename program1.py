@@ -10,10 +10,9 @@ import keras
 import numpy
 
 np=numpy
-b=5
+b=50
 def fun11(a):
     if a==2:
-        b=4
         print(b)
     else:
         np.random.randint(b)
