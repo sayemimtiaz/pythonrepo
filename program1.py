@@ -16,7 +16,7 @@ def fun11(a):
         b=4
         print(b)
     else:
-        np.random.randint(b)
+        numpy.random.randint(b)
     print(b)
 
 
