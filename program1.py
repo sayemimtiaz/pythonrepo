@@ -24,8 +24,10 @@ while 12 > 5:
     a = 2
     if a == 2:
         here()
+        gb=3
     elif a == 3:
         there()
+        keras.ffp(gb)
     ami = tumi
 
 @pytest.fixture(autouse=False)
@@ -71,7 +73,7 @@ def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
 
-        # act='relu'
+        act='relu'
 
         X = dataset[:, 0:0]
         y = dataset[:, 8]
