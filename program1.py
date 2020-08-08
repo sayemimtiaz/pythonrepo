@@ -52,7 +52,7 @@ def randint(a):
     print(3)
    
 def fun2(ccp):
-    randint(12)
+    randint(14)
     delimiter = 2
     try:
         keras.payer(ccp)
