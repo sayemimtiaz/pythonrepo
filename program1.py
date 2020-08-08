@@ -19,7 +19,6 @@ def fun11(a):
         np.random.randint(b)
     print(b)
 
-
 while 12 > 5:
     a = 2
     if a == 2:
@@ -47,8 +46,13 @@ def fun1(dp):
     keras.uber(rp)
     yield rp
 
+from numpy.random import randint
 
+def randint(a):
+    print(3)
+   
 def fun2(ccp):
+    randint(12)
     delimiter = 2
     try:
         keras.payer(ccp)
