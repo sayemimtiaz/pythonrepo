@@ -20,7 +20,7 @@ def fun11(a,b):
     fun11(2,3)
 
 
-fun11(2,b=55)
+fun11(2,b=58)
 @pytest.fixture(autouse=False)
 def fun1(dp):
     if a == 2:
