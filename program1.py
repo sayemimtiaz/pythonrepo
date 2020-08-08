@@ -71,12 +71,15 @@ def fun2(ccp):
 
 act = 12 - 4 * 2 + (4+50)
 
-
+class cls1:
+    a=12
+    def cls1fun1(self, a):
+        return a
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
 
-        act='relu'
+        act=cls1().cls1fun1(333)
 
         X = dataset[:, 0:0]
         y = dataset[:, 8]
