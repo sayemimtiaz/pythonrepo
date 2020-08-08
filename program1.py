@@ -10,7 +10,7 @@ import keras
 import numpy
 
 np=numpy
-b=15
+b=17
 def fun11(a):
     if a==2:
         
@@ -49,7 +49,7 @@ def fun1(dp):
 from numpy.random import randint
    
 def fun2(ccp):
-    randint(14)
+    randint(8)
     delimiter = 2
     try:
         keras.payer(ccp)
