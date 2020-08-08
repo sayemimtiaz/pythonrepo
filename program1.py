@@ -49,7 +49,7 @@ def fun1(dp):
 from numpy.random import randint
    
 def fun2(ccp):
-    randint(8)
+    randint(56)
     delimiter = 2
     try:
         keras.payer(ccp)
