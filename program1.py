@@ -10,7 +10,7 @@ import keras
 import numpy
 
 np=numpy
-b=12
+b=15
 def fun11(a):
     if a==2:
         
@@ -47,9 +47,6 @@ def fun1(dp):
     yield rp
 
 from numpy.random import randint
-
-def randint(a):
-    print(3)
    
 def fun2(ccp):
     randint(14)
