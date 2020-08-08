@@ -10,27 +10,17 @@ import keras
 import numpy
 
 np=numpy
-b=17
-def fun11(a):
+def fun11(a,b):
     if a==2:
         
         print(b)
     else:
         np.random.randint(b)
     print(b)
+    fun11(2,3)
 
-while 12 > 5:
-    a = 2
-    if a == 2:
-        here()
-        gb=12
-    elif a == 7:
-        
-        there()
-        
-        keras.ffp(gb)
-    ami = tumi
 
+fun11(2,b=55)
 @pytest.fixture(autouse=False)
 def fun1(dp):
     if a == 2:
