@@ -9,6 +9,7 @@ from keras.layers import Dense
 import keras
 import numpy
 
+y1=y2.y3()=10
 np=numpy
 def fun11(a,b):
     if a==2:
