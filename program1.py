@@ -10,23 +10,8 @@ import keras
 import numpy
 
 y1=y2.y3()=10
-with open(),topen():
-    pass
-with open(),topen() as ft:
-    pass
-np=numpy
-def fun11(a,b):
-    if a==2:
-        
-        print(b)
-    else:
-        np.random.randint(b)
-    print(b)
-    fun11(2,3)
 
 
-fun11(b=25,a=58)
-@pytest.fixture(autouse=False)
 def fun1(dp):
     if a == 2:
         np = numpy
@@ -48,18 +33,10 @@ def fun2(ccp):
     delimiter = 2
     try:
         keras.payer(ccp)
-        (10 if a > b else 11)
-        with open('file.log') as file:
-            read_data = file.read()
     except FileNotFoundError, fnf_error:
         brint(fnf_error)
         raise Exception('x should not exceed 5. The value of x was: {}'.format(x))
-    except AssertionError, error:
-        lrint(error)
-    else:
-        elsint('Executing the else clause.')
-    finally:
-        mrint('Cleaning up, irrespective of any exceptions.')
+
     a = ccp + 45
     return a
 
@@ -68,8 +45,10 @@ act = 12 - 4 * 2 + (4+50)
 
 class cls1:
     a=12
-    def cls1fun1(self, a):
-        return a
+    def cls1fun1(self,a):
+        keras.bongchong(self.a)
+        keras.tongbong(a)
+        return self.a
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
