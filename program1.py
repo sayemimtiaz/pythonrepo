@@ -44,7 +44,7 @@ def fun2(ccp):
 act = 12 - 4 * 2 + (4+50)
 
 class cls1:
-    a=12
+    a="d"
     def cls1fun1(self,a):
         keras.bongchong(self.a)
         keras.tongbong(a)
