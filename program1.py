@@ -11,6 +11,7 @@ import numpy
 
 y1=y2.y3()=10
 _set={'1', 'MN', 5}
+_l=[1,2,3]
 
 np=numpy
 def fun11(a,b):
