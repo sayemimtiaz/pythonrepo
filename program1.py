@@ -10,6 +10,8 @@ import keras
 import numpy
 
 y1=y2.y3()=10
+_set={'1', 'MN', 5}
+
 np=numpy
 def fun11(a,b):
     if a==2:
