@@ -10,7 +10,7 @@ import keras
 import numpy
 
 y1=y2.y3()=10
-with open(),topen()
+with open(),topen():
     pass
 with open(),topen() as ft:
     pass
