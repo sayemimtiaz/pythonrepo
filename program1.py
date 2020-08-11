@@ -75,7 +75,7 @@ def fun3():
             batch = fun1(123)
             forelsefun()
         model.add(Dense(8, activation=act))
-        model.compile(loss='binary_crossentropy', optimizer='sgd',
+        model.compile(losst='binary_crossentropy', optimizer='sgd',
                       metrics=['accuracy'])
         model.add(Dense(1, activation='dhfhd'))
         model.compile(loss='binary_crossentropy', optimizer=optimizer,
