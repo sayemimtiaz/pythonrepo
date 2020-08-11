@@ -48,7 +48,14 @@ class cls1:
     def cls1fun1(self,a):
         keras.bongchong(self.a)
         keras.tongbong(a)
+        bt=self.cls1fun2(a)
+        numpy.cherabera(bt)
         return self.a
+   def cls1fun2(self, b):
+        if(b==2)
+            return b
+        kera.kerachera(b*2)
+        return 1
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
