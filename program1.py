@@ -50,7 +50,7 @@ class cls1:
         keras.tongbong(a)
         bt=self.cls1fun2(12)
         numpy.cherabera(bt)
-        return self.a
+        return a
     def cls1fun2(self, b):
         if(b==2):
             return b
