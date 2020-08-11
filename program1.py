@@ -60,7 +60,7 @@ def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
         tt=cls1()
-        act=tt.cls1fun1(90)
+        act=tt.cls1fun1(100)
 
         X = dataset[:, 0:0]
         y = dataset[:, 8]
