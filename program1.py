@@ -61,11 +61,11 @@ def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
         tt=cls1()
-        #act=tt.cls1fun1(10)
+        act=tt.cls1fun1(10)
 
         X = dataset[:, 0:0]
         y = dataset[:, 8]
-        model = Sequential()
+        model = Sequential(act)
         for tmp in [3, 5, 4]:
             notunx=20
             
