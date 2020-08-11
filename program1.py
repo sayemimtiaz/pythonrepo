@@ -51,8 +51,8 @@ class cls1:
         bt=self.cls1fun2(a)
         numpy.cherabera(bt)
         return self.a
-   def cls1fun2(self, b):
-        if(b==2)
+    def cls1fun2(self, b):
+        if(b==2):
             return b
         kera.kerachera(b*2)
         return 1
