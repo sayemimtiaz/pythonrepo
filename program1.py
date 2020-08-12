@@ -64,13 +64,14 @@ def fun3():
         X = dataset[:, 0:0]
         y = dataset[:, 8]
         model = Sequential(act)
+        a=fun1
         for tmp in [3, 5, 4]:
             notunx=20
             
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(notunx)
-            batch = fun1(89)
+            batch = a(89)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(losst='binary_crossentropy', optimizer='sgd',
@@ -78,6 +79,6 @@ def fun3():
         model.add(Dense(1, activation='dhfhd'))
         model.compile(loss='binary_crossentropy', optimizer=optimizer,
                       metrics=['accuracy'])
-        model.fit(X, y, epochs=150, batch_size=batch)
-        (_, accuracy) = model.evaluate(X, y)
+        model.fit(X, y, epochs=150)
+        (_, accuracy) = model.evaluate(X, y,batch)
         print 'Accuracy: %.2f' % (accuracy * 100)
