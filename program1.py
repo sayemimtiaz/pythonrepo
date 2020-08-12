@@ -11,6 +11,10 @@ import numpy
 
 y1=y2.y3()=10
 
+def fun4(k,t):
+    keras.mera(k)
+
+fun4(t=199,k=10)
 
 def fun1(dp):
     if a == 2:
