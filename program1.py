@@ -56,7 +56,7 @@ class cls1:
 
         return 1
     p=cls1fun1
-    cls1fun1(30)
+    cls1fun1(312)
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
