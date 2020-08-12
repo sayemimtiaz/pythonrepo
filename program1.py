@@ -56,7 +56,7 @@ class cls1:
 
         return 1
     p=cls1fun1
-    cls1fun1(312)
+    cls1fun1(7)
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
@@ -72,7 +72,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(notunx)
-            batch = a(99)
+            batch = a(0)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(losst='binary_crossentropy', optimizer='sgd',
