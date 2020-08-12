@@ -71,7 +71,7 @@ def fun3():
             
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            keras.shibbir(notunx)
+            keras.shibbir(fun2(10))
             batch = a(0)
             forelsefun()
         model.add(Dense(8, activation=act))
