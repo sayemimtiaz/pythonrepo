@@ -19,7 +19,7 @@ def fun1(dp):
         rp = np.random
     while True:
         trin('ok')
-    b = 12 - 2+dp
+    b = 12 - 2
 
     
     keras.uber(fun2(b))
