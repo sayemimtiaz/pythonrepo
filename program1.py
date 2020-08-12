@@ -48,8 +48,6 @@ class cls1:
     def cls1fun1(self,a):
         keras.bongchong(self.a)
         keras.tongbong(a)
-        bt=self.cls1fun2(12)
-        numpy.cherabera(bt)
         return a
     def cls1fun2(self, b):
         if(b==2):
