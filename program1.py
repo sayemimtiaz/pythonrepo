@@ -36,7 +36,7 @@ def fun2(ccp):
         brint(fnf_error)
         raise Exception('x should not exceed 5. The value of x was: {}'.format(x))
 
-    a = ccp + 45
+    a = ccp + 45-5
     return a
 
 
