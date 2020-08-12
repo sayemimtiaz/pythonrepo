@@ -19,11 +19,10 @@ def fun1(dp):
         rp = np.random
     while True:
         trin('ok')
-    b = 12 - 2
-    if t>2:
-        rp=fun2(dp)
+    b = 12 - 2+dp
+
     
-    keras.uber(rp)
+    keras.uber(fun2(b))
     yield rp
 
 from numpy.random import randint
