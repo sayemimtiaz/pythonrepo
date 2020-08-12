@@ -14,7 +14,7 @@ y1=y2.y3()=10
 
 def fun4(k,t):
     keras.mera(k)
-    k=k+t
+    k=1/k+t
     return k
 
 fun4(t=199,k=100)
