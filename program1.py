@@ -55,7 +55,7 @@ class cls1:
         kera.kerachera(b*2)
 
         return 1
-    clsfun1(89)
+    cls1fun1(89)
 def fun3():
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
