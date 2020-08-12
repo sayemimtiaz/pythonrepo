@@ -7,12 +7,15 @@ from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
 import keras
+import tensorflow as tf
 import numpy
 
 y1=y2.y3()=10
 
 def fun4(k,t):
     keras.mera(k)
+    k=k+t
+    return k
 
 fun4(t=199,k=100)
 
@@ -71,7 +74,7 @@ def fun3():
         a=fun1
         for tmp in [3, 5, 4]:
             notunx=20
-            
+            tf.feed(loss=fun4)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(fun2(7))
