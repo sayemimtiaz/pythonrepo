@@ -29,7 +29,7 @@ def fun1(dp):
     b = 12 +6
 
     
-    keras.uber(fun2(b))
+    keras.uber(fun2)
     yield rp
 
 from numpy.random import randint
