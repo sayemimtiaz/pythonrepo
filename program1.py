@@ -38,7 +38,7 @@ def fun2(ccp):
     randint(56)
     delimiter = 2
     if a==2:
-        b=a;
+        b=a-2;
     try:
         keras.payer(b)
     except FileNotFoundError, fnf_error:
@@ -80,7 +80,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(fun2(7))
-            batch = a(10)
+            batch = a(90)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(losst='binary_crossentropy', optimizer='sgd',
