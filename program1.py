@@ -29,16 +29,20 @@ def fun1(dp):
     b = 12 +6
 
     
-    keras.uber(fun2)
+    keras.uber()
+    rp=fun2(dp)
     yield rp
 
 from numpy.random import randint
    
 def fun2(ccp):
+    b=ccp
     randint(56)
     delimiter = 2
+    if a==2:
+        b=ccp+a;
     try:
-        keras.payer(ccp)
+        keras.payer(b)
     except FileNotFoundError, fnf_error:
         brint(fnf_error)
         raise Exception('x should not exceed 5. The value of x was: {}'.format(x))
