@@ -29,9 +29,7 @@ def fun1(dp):
     b = 12 +6
 
     
-    keras.uber()
-    rp=fun2(dp)
-    yield rp
+    yield fun(dp)
 
 from numpy.random import randint
    
@@ -40,7 +38,7 @@ def fun2(ccp):
     randint(56)
     delimiter = 2
     if a==2:
-        b=ccp+a;
+        b=a;
     try:
         keras.payer(b)
     except FileNotFoundError, fnf_error:
