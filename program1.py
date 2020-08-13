@@ -1,279 +1,143 @@
-from __future__ import division
-from __future__ import print_function
+#! /usr/bin/python
+# -*- coding: utf8 -*-
 
-import argparse
-from datetime import datetime
-import json
-import os
-
-import librosa
-import numpy as np
 import tensorflow as tf
+import tensorlayer as tl
+from tensorlayer.layers import *
 
-from wavenet import WaveNetModel, mu_law_decode, mu_law_encode, audio_reader
+##================== PREPARE DATA ============================================##
+sess = tf.InteractiveSession()
+X_train, y_train, X_val, y_val, X_test, y_test = \
+                                tl.files.load_mnist_dataset(shape=(-1, 28, 28, 1))
 
-SAMPLES = 16000
-TEMPERATURE = 1.0
-LOGDIR = './logdir'
-WAVENET_PARAMS = './wavenet_params.json'
-SAVE_EVERY = None
-SILENCE_THRESHOLD = 0.1
+def pad_distort_im_fn(x):
+    """ Zero pads an image to 40x40, and distort it.
 
+    Examples
+    ---------
+    x = pad_distort_im_fn(X_train[0])
+    print(x, x.shape, x.max())
+    tl.vis.save_image(x, '_xd.png')
+    tl.vis.save_image(X_train[0], '_x.png')
+    """
+    b = np.zeros((40, 40, 1))
+    o = int((40-28)/2)
+    b[o:o+28, o:o+28] = x
+    x = b
+    x = tl.prepro.rotation(x, rg=30, is_random=True, fill_mode='constant')
+    x = tl.prepro.shear(x, 0.05, is_random=True, fill_mode='constant')
+    x = tl.prepro.shift(x, wrg=0.25, hrg=0.25, is_random=True, fill_mode='constant')
+    x = tl.prepro.zoom(x, zoom_range=[0.95, 1.05], is_random=True, fill_mode='constant')
+    return x
 
-def get_arguments():
-    def _str_to_bool(s):
-        """Convert string to bool (in argparse context)."""
-        if s.lower() not in ['true', 'false']:
-            raise ValueError('Argument needs to be a '
-                             'boolean, got {}'.format(s))
-        return {'true': True, 'false': False}[s.lower()]
+def pad_distort_ims_fn(X):
+    """ Zero pads images to 40x40, and distort them. """
+    X_40 = []
+    for X_a, _ in tl.iterate.minibatches(X, X, 50, shuffle=False):
+        X_40.extend(tl.prepro.threading_data(X_a, fn=pad_distort_im_fn))
+    X_40 = np.asarray(X_40)
+    return X_40
 
-    def _ensure_positive_float(f):
-        """Ensure argument is a positive float."""
-        if float(f) < 0:
-            raise argparse.ArgumentTypeError(
-                    'Argument must be greater than zero')
-        return float(f)
+# create dataset with size of 40x40 with distortion
+X_train_40 = pad_distort_ims_fn(X_train)
+X_val_40 = pad_distort_ims_fn(X_val)
+X_test_40 = pad_distort_ims_fn(X_test)
 
-    parser = argparse.ArgumentParser(description='WaveNet generation script')
-    parser.add_argument(
-        'checkpoint', type=str, help='Which model checkpoint to generate from')
-    parser.add_argument(
-        '--samples',
-        type=int,
-        default=SAMPLES,
-        help='How many waveform samples to generate')
-    parser.add_argument(
-        '--temperature',
-        type=_ensure_positive_float,
-        default=TEMPERATURE,
-        help='Sampling temperature')
-    parser.add_argument(
-        '--logdir',
-        type=str,
-        default=LOGDIR,
-        help='Directory in which to store the logging '
-        'information for TensorBoard.')
-    parser.add_argument(
-        '--wavenet_params',
-        type=str,
-        default=WAVENET_PARAMS,
-        help='JSON file with the network parameters')
-    parser.add_argument(
-        '--wav_out_path',
-        type=str,
-        default=None,
-        help='Path to output wav file')
-    parser.add_argument(
-        '--save_every',
-        type=int,
-        default=SAVE_EVERY,
-        help='How many samples before saving in-progress wav')
-    parser.add_argument(
-        '--fast_generation',
-        type=_str_to_bool,
-        default=True,
-        help='Use fast generation')
-    parser.add_argument(
-        '--wav_seed',
-        type=str,
-        default=None,
-        help='The wav file to start generation from')
-    parser.add_argument(
-        '--gc_channels',
-        type=int,
-        default=None,
-        help='Number of global condition embedding channels. Omit if no '
-             'global conditioning.')
-    parser.add_argument(
-        '--gc_cardinality',
-        type=int,
-        default=None,
-        help='Number of categories upon which we globally condition.')
-    parser.add_argument(
-        '--gc_id',
-        type=int,
-        default=None,
-        help='ID of category to generate, if globally conditioned.')
-    arguments = parser.parse_args()
-    if arguments.gc_channels is not None:
-        if arguments.gc_cardinality is None:
-            raise ValueError("Globally conditioning but gc_cardinality not "
-                             "specified. Use --gc_cardinality=377 for full "
-                             "VCTK corpus.")
+tl.vis.save_images(X_test[0:32], [4, 8], '_imgs_original.png')
+tl.vis.save_images(X_test_40[0:32], [4, 8], '_imgs_distorted.png')
 
-        if arguments.gc_id is None:
-            raise ValueError("Globally conditioning, but global condition was "
-                              "not specified. Use --gc_id to specify global "
-                              "condition.")
+##================== DEFINE MODEL ============================================##
+batch_size = 64
+x = tf.placeholder(tf.float32, shape=[batch_size, 40, 40, 1], name='x')
+y_ = tf.placeholder(tf.int64, shape=[batch_size, ], name='y_')
 
-    return arguments
+def model(x, is_train, reuse):
+    with tf.variable_scope("STN", reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+        nin = InputLayer(x, name='in')
+        ## 1. Localisation network
+        # use MLP as the localisation net
+        nt = FlattenLayer(nin, name='tf')
+        nt = DenseLayer(nt, n_units=20, act=tf.nn.tanh, name='td1')
+        nt = DropoutLayer(nt, 0.8, True, is_train, name='tdrop')
+        # you can also use CNN instead for MLP as the localisation net
+        # nt = Conv2d(nin, 16, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='tc1')
+        # nt = Conv2d(nt, 8, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='tc2')
+        ## 2. Spatial transformer module (sampler)
+        n = SpatialTransformer2dAffineLayer(nin, nt, out_size=[40, 40], name='ST')
+        s = n
+        ## 3. Classifier
+        n = Conv2d(n, 16, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='c1')
+        n = Conv2d(n, 16, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='c2')
+        n = FlattenLayer(n, name='f')
+        n = DenseLayer(n, n_units=1024, act=tf.nn.relu, name='d1')
+        n = DenseLayer(n, n_units=10, act=tf.identity, name='do')
+        ## 4. Cost function and Accuracy
+        y = n.outputs
+        cost = tl.cost.cross_entropy(y, y_, 'cost')
+        correct_prediction = tf.equal(tf.argmax(y, 1), y_)
+        acc = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        return n, s, cost, acc
 
+net_train, _, cost, _ = model(x, is_train=True, reuse=False)
+net_test, net_trans, cost_test, acc = model(x, is_train=False, reuse=True)
 
-def write_wav(waveform, sample_rate, filename):
-    y = np.array(waveform)
-    librosa.output.write_wav(filename, y, sample_rate)
-    print('Updated wav file at {}'.format(filename))
+##================== DEFINE TRAIN OPS ========================================##
+n_epoch = 500
+learning_rate = 0.0001
+print_freq = 10
 
+train_params = tl.layers.get_variables_with_name('STN', train_only=True, printable=True)
+train_op = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999,
+    epsilon=1e-08, use_locking=False).minimize(cost, var_list=train_params)
 
-def create_seed(filename,
-                sample_rate,
-                quantization_channels,
-                window_size,
-                silence_threshold=SILENCE_THRESHOLD):
-    audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
-    audio = audio_reader.trim_silence(audio, silence_threshold)
+##================== TRAINING ================================================##
+tl.layers.initialize_global_variables(sess)
+net_train.print_params()
+net_train.print_layers()
 
-    quantized = mu_law_encode(audio, quantization_channels)
-    cut_index = tf.cond(tf.size(quantized) < tf.constant(window_size),
-                        lambda: tf.size(quantized),
-                        lambda: tf.constant(window_size))
+for epoch in range(n_epoch):
+    start_time = time.time()
+    ## you can use continuous data augmentation
+    # for X_train_a, y_train_a in tl.iterate.minibatches(
+    #                             X_train, y_train, batch_size, shuffle=True):
+    #     X_train_a = tl.prepro.threading_data(X_train_a, fn=pad_distort_im_fn)
+    #     sess.run(train_op, feed_dict={x: X_train_a, y_: y_train_a})
+    ## or use pre-distorted images (faster)
+    for X_train_a, y_train_a in tl.iterate.minibatches(
+                                X_train_40, y_train, batch_size, shuffle=True):
+        sess.run(train_op, feed_dict={x: X_train_a, y_: y_train_a})
 
-    return quantized[:cut_index]
+    if epoch + 1 == 1 or (epoch + 1) % print_freq == 0:
+        print("Epoch %d of %d took %fs" % (epoch + 1, n_epoch, time.time() - start_time))
+        train_loss, train_acc, n_batch = 0, 0, 0
+        for X_train_a, y_train_a in tl.iterate.minibatches(
+                                X_train_40, y_train, batch_size, shuffle=False):
+            err, ac = sess.run([cost_test, acc], feed_dict={x: X_train_a, y_: y_train_a})
+            train_loss += err; train_acc += ac; n_batch += 1
+        print("   train loss: %f" % (train_loss/ n_batch))
+        print("   train acc: %f" % (train_acc/ n_batch))
+        val_loss, val_acc, n_batch = 0, 0, 0
+        for X_val_a, y_val_a in tl.iterate.minibatches(
+                                    X_val_40, y_val, batch_size, shuffle=False):
+            err, ac = sess.run([cost_test, acc], feed_dict={x: X_train_a, y_: y_train_a})
+            val_loss += err; val_acc += ac; n_batch += 1
+        print("   val loss: %f" % (val_loss/ n_batch))
+        print("   val acc: %f" % (val_acc/ n_batch))
 
+        # net_train.print_params()
+        # net_test.print_params()
+        # net_trans.print_params()
+        print('save images')
+        trans_imgs = sess.run(net_trans.outputs, {x: X_test_40[0:64]})
+        tl.vis.save_images(trans_imgs[0:32], [4, 8], '_imgs_distorted_after_stn_%s.png' % epoch)
 
-def main():
-    args = get_arguments()
-    started_datestring = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
-    logdir = os.path.join(args.logdir, 'generate', started_datestring)
-    with open(args.wavenet_params, 'r') as config_file:
-        wavenet_params = json.load(config_file)
-
-    sess = tf.Session()
-
-    net = WaveNetModel(
-        batch_size=1,
-        dilations=wavenet_params['dilations'],
-        filter_width=wavenet_params['filter_width'],
-        residual_channels=wavenet_params['residual_channels'],
-        dilation_channels=wavenet_params['dilation_channels'],
-        quantization_channels=wavenet_params['quantization_channels'],
-        skip_channels=wavenet_params['skip_channels'],
-        use_biases=wavenet_params['use_biases'],
-        scalar_input=wavenet_params['scalar_input'],
-        initial_filter_width=wavenet_params['initial_filter_width'],
-        global_condition_channels=args.gc_channels,
-        global_condition_cardinality=args.gc_cardinality)
-
-    samples = tf.placeholder(tf.int32)
-
-    if args.fast_generation:
-        next_sample = net.predict_proba_incremental(samples, args.gc_id)
-    else:
-        next_sample = net.predict_proba(samples, args.gc_id)
-
-    if args.fast_generation:
-        sess.run(tf.global_variables_initializer())
-        sess.run(net.init_ops)
-
-    variables_to_restore = {
-        var.name[:-2]: var for var in tf.global_variables()
-        if not ('state_buffer' in var.name or 'pointer' in var.name)}
-    saver = tf.train.Saver(variables_to_restore)
-
-    print('Restoring model from {}'.format(args.checkpoint))
-    saver.restore(sess, args.checkpoint)
-
-    decode = mu_law_decode(samples, wavenet_params['quantization_channels'])
-
-    quantization_channels = wavenet_params['quantization_channels']
-    if args.wav_seed:
-        seed = create_seed(args.wav_seed,
-                           wavenet_params['sample_rate'],
-                           quantization_channels,
-                           net.receptive_field)
-        waveform = sess.run(seed).tolist()
-    else:
-        # Silence with a single random sample at the end.
-        waveform = [quantization_channels / 2] * (net.receptive_field - 1)
-        waveform.append(np.random.randint(quantization_channels))
-
-    if args.fast_generation and args.wav_seed:
-        # When using the incremental generation, we need to
-        # feed in all priming samples one by one before starting the
-        # actual generation.
-        # TODO This could be done much more efficiently by passing the waveform
-        # to the incremental generator as an optional argument, which would be
-        # used to fill the queues initially.
-        outputs = [next_sample]
-        outputs.extend(net.push_ops)
-
-        print('Priming generation...')
-        for i, x in enumerate(waveform[-net.receptive_field: -1]):
-            if i % 100 == 0:
-                print('Priming sample {}'.format(i))
-            sess.run(outputs, feed_dict={samples: x})
-        print('Done.')
-
-    last_sample_timestamp = datetime.now()
-    for step in range(args.samples):
-        if args.fast_generation:
-            outputs = [next_sample]
-            outputs.extend(net.push_ops)
-            window = waveform[-1]
-        else:
-            if len(waveform) > net.receptive_field:
-                window = waveform[-net.receptive_field:]
-            else:
-                window = waveform
-            outputs = [next_sample]
-
-        # Run the WaveNet to predict the next sample.
-        prediction = sess.run(outputs, feed_dict={samples: window})[0]
-
-        # Scale prediction distribution using temperature.
-        np.seterr(divide='ignore')
-        scaled_prediction = np.log(prediction) / args.temperature
-        scaled_prediction = (scaled_prediction -
-                             np.logaddexp.reduce(scaled_prediction))
-        scaled_prediction = np.exp(scaled_prediction)
-        np.seterr(divide='warn')
-
-        # Prediction distribution at temperature=1.0 should be unchanged after
-        # scaling.
-        if args.temperature == 1.0:
-            np.testing.assert_allclose(
-                    prediction, scaled_prediction, atol=1e-5,
-                    err_msg='Prediction scaling at temperature=1.0 '
-                            'is not working as intended.')
-
-        sample = np.random.choice(
-            np.arange(quantization_channels), p=scaled_prediction)
-        waveform.append(sample)
-
-        # Show progress only once per second.
-        current_sample_timestamp = datetime.now()
-        time_since_print = current_sample_timestamp - last_sample_timestamp
-        if time_since_print.total_seconds() > 1.:
-            print('Sample {:3<d}/{:3<d}'.format(step + 1, args.samples),
-                  end='\r')
-            last_sample_timestamp = current_sample_timestamp
-
-        # If we have partial writing, save the result so far.
-        if (args.wav_out_path and args.save_every and
-                (step + 1) % args.save_every == 0):
-            out = sess.run(decode, feed_dict={samples: waveform})
-            write_wav(out, wavenet_params['sample_rate'], args.wav_out_path)
-
-    # Introduce a newline to clear the carriage return from the progress.
-    print()
-
-    # Save the result as an audio summary.
-    datestring = str(datetime.now()).replace(' ', 'T')
-    writer = tf.summary.FileWriter(logdir)
-    tf.summary.audio('generated', decode, wavenet_params['sample_rate'])
-    summaries = tf.summary.merge_all()
-    summary_out = sess.run(summaries,
-                           feed_dict={samples: np.reshape(waveform, [-1, 1])})
-    writer.add_summary(summary_out)
-
-    # Save the result as a wav file.
-    if args.wav_out_path:
-        out = sess.run(decode, feed_dict={samples: waveform})
-        write_wav(out, wavenet_params['sample_rate'], args.wav_out_path)
-
-    print('Finished generating. The result can be viewed in TensorBoard.')
-
-
-if __name__ == '__main__':
-    main()
+##================== EVALUATION ==============================================##
+print('Evaluation')
+test_loss, test_acc, n_batch = 0, 0, 0
+for X_test_a, y_test_a in tl.iterate.minibatches(
+                            X_test_40, y_test, batch_size, shuffle=False):
+    err, ac = sess.run([cost_test, acc], feed_dict={x: X_test_a, y_: y_test_a})
+    test_loss += err; test_acc += ac; n_batch += 1
+print("   test loss: %f" % (test_loss/n_batch))
+print("   test acc: %f" % (test_acc/n_batch))
