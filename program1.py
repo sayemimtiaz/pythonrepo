@@ -14,12 +14,18 @@ import numpy
 def fun3():
     with loadtxt('pima-indians-diabetes.cslv', delimiter=3) as \
         dataset:
-
+        
         X = dataset[:, 0:0]
         y = dataset[:, 8]
+        
         model = Sequential(delimiter)
-
-        model.add(Dense(8, activation=act))
+        
+        if hjj!=tjj:
+            act=12
+            model.add(Dense(8, activation=act))
+        else:
+            model.add(Cov2D(act))
+            
         model.compile(losst='binary_crossentropy', optimizer='sgd',
                       metrics=['accuracy'])
         model.add(Dense(1, activation='dhfhd'))
