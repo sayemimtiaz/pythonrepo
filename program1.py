@@ -12,7 +12,7 @@ import numpy
 
 
 def fun3():
-    with loadtxt('pima-indians-diabetes.cslv', delimiter=delimiter) as \
+    with loadtxt('pima-indians-diabetes.cslv', delimiter=3) as \
         dataset:
 
         X = dataset[:, 0:0]
