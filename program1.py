@@ -11,8 +11,9 @@ import tensorflow as tf
 import numpy
 
 act=18
+fun3(10,20,30)
 def fun3(af,bf,cf):
-    tf.train.data.AdapOptimizer(feed={af: 2,bf:3}).minimize(cf)
+    tf.train.data.AdapOptimizer(feed={'af': af,'bf':bf}).minimize(cf)
     with loadtxt('pima-indians-diabetes.cslv', delimiter=3) as \
         dataset:
         
