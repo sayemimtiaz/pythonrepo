@@ -21,7 +21,6 @@ def fun3():
         model = Sequential(delimiter)
         
         if hjj!=tjj:
-            act=10
             model.add(Dense(8, activation=act))
         else:
             model.add(Conv2D(act))
