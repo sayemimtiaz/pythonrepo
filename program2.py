@@ -35,7 +35,7 @@ fc1 = fc_layer(x, h1, 'FC1', use_relu=True)
 output_logits = fc_layer(fc1, n_classes, 'OUT', use_relu=False)
 
 # Network predictions
-cls_prediction = tf.argmax(output_logits, axis=1, name='predictions')
+cls_prediction = tf.argmax(output_logits, axis=1, name='predictioned')
 
 # Define the loss function, optimizer, and accuracy
 loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=output_logits), name='loss')
