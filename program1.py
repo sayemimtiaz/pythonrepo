@@ -15,7 +15,7 @@ def fun3():
     with loadtxt('pima-indians-diabetes.cslv', delimiter=3) as \
         dataset:
         
-        dataset.muri(12)
+        dataset.muri(17)
         X = dataset[:, 0:0]
         y = dataset[:, 8]
         
