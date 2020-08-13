@@ -1,106 +1,88 @@
+import pytest
+from pathlib import Path
+from imageatm.components.training import Training
+from imageatm.handlers.data_generator import TrainDataGenerator, ValDataGenerator
+from imageatm.handlers.image_classifier import ImageClassifier
 
-# imports
-import tensorflow as tf
-import numpy as np
-from ops import fc_layer
-from utils import *
+p = Path(__file__)
 
-# Data Dimensions
-img_h = img_w = 28              # MNIST images are 28x28
-img_size_flat = img_h * img_w   # 28x28=784, the total number of pixels
-n_classes = 10                  # Number of classes, one class per digit
+TEST_IMAGE_DIR = p.resolve().parent / '../data/test_images'
+TEST_JOB_DIR = p.resolve().parent / '../data/test_train_job'
 
-# Load MNIST data
-x_train, y_train, x_valid, y_valid = load_data(mode='train')
-print("Size of:")
-print("- Training-set:\t\t{}".format(len(y_train)))
-print("- Validation-set:\t{}".format(len(y_valid)))
 
-# Hyper-parameters
-learning_rate = 0.001   # The optimization initial learning rate
-epochs = 10             # Total number of training epochs
-batch_size = 100        # Training batch size
-display_freq = 100      # Frequency of displaying the training results
+@pytest.fixture(autouse=True)
+def common_patches(mocker):
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.__init__')
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.build')
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.compile')
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.fit_generator')
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.summary')
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.get_preprocess_input')
+    mocker.patch('imageatm.handlers.image_classifier.ImageClassifier.get_base_layers')
+    ImageClassifier.__init__.return_value = None
 
-# Network Configuration
-h1 = 200                # Number of units in the first hidden layer
+    mocker.patch('imageatm.handlers.data_generator.TrainDataGenerator.__init__')
+    mocker.patch('imageatm.handlers.data_generator.ValDataGenerator.__init__')
+    TrainDataGenerator.__init__.return_value = None
+    ValDataGenerator.__init__.return_value = None
 
-# Create the graph for the linear model
-# Placeholders for inputs (x) and outputs(y)
-x = tf.placeholder(tf.float32, shape=[None, img_size_flat], name='X')
-y = tf.placeholder(tf.float32, shape=[None, n_classes], name='Y')
 
-# Create the network layers
-fc1 = fc_layer(x, h1, 'FC1', use_relu=True)
-output_logits = fc_layer(fc1, n_classes, 'OUT', use_relu=False)
+class TestTraining(object):
+    train = None
 
-# Network predictions
-cls_prediction = tf.argmax(output_logits, axis=1, name='predictioned')
+    def test__init(self):
+        global train
+        train = Training(image_dir=TEST_IMAGE_DIR, job_dir=TEST_JOB_DIR)
 
-# Define the loss function, optimizer, and accuracy
-loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=output_logits), name='loss')
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='Adam-op').minimize(loss)
-correct_prediction = tf.equal(tf.argmax(output_logits, 1), tf.argmax(y, 1), name='correct_pred')
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
+        assert train.n_classes == 2
+        assert train.epochs_train_dense == 100
 
-# Create the op for initializing all variables
-init = tf.global_variables_initializer()
+    def test__set_patience(self):
+        global train
 
-# Launch the graph (session)
-with tf.Session() as sess:
-    sess.run(init)
-    global_step = 0
-    # Number of training iterations in each epoch
-    num_tr_iter = int(len(y_train) / batch_size)
-    for epoch in range(epochs):
-        print('Training epoch: {}'.format(epoch + 1))
-        x_train, y_train = randomize(x_train, y_train)
-        for iteration in range(num_tr_iter):
-            global_step += 1
-            start = iteration * batch_size
-            end = (iteration + 1) * batch_size
-            x_batch, y_batch = get_next_batch(x_train, y_train, start, end)
+        n_per_class = int(len(train.samples_train) / train.n_classes)
 
-            # Run optimization op (backprop)
-            feed_dict_batch = {x: x_batch, y: y_batch}
-            sess.run(optimizer, feed_dict=feed_dict_batch)
+        assert n_per_class == 2
 
-            if iteration % display_freq == 0:
-                # Calculate and display the batch loss and accuracy
-                loss_batch, acc_batch = sess.run([loss, accuracy],
-                                                 feed_dict=feed_dict_batch)
+        train._set_patience()
 
-                print("iter {0:3d}:\t Loss={1:.2f},\tTraining Accuracy={2:.01%}".
-                      format(iteration, loss_batch, acc_batch))
+        assert train.patience_learning_rate == 5
+        assert train.patience_early_stopping == 15
 
-        # Run validation after every epoch
-        feed_dict_valid = {x: x_valid[:1000], y: y_valid[:1000]}
-        loss_valid, acc_valid = sess.run([loss, accuracy], feed_dict=feed_dict_valid)
-        print('---------------------------------------------------------')
-        print("Epoch: {0}, validation loss: {1:.2f}, validation accuracy: {2:.01%}".
-              format(epoch + 1, loss_valid, acc_valid))
-        print('---------------------------------------------------------')
+        train_400 = train
+        train_400.samples_train = train_400.samples_train * 100
 
-        # Test the network after training
-        # Accuracy
-        x_test, y_test = load_data(mode='test')
-        feed_dict_test = {x: x_test[:1000], y: y_test[:1000]}
-        loss_test, acc_test = sess.run([loss, accuracy], feed_dict=feed_dict_test)
-        print('---------------------------------------------------------')
-        print("Test loss: {0:.2f}, test accuracy: {1:.01%}".format(loss_test, acc_test))
-        print('---------------------------------------------------------')
+        train_400._set_patience()
 
-    # Test the network after training
-    x_test, y_test = load_data(mode='test')
-    feed_dict_test = {x: x_test[:1000], y: y_test[:1000]}
-    loss_test, acc_test = sess.run([loss, accuracy], feed_dict=feed_dict_test)
-    print('---------------------------------------------------------')
-    print("Test loss: {0:.2f}, test accuracy: {1:.01%}".format(loss_test, acc_test))
-    print('---------------------------------------------------------')
+        assert train_400.patience_learning_rate == 4
+        assert train_400.patience_early_stopping == 12
 
-    # Plot some of the correct and misclassified examples
-    cls_pred = sess.run(cls_prediction, feed_dict=feed_dict_test)
-    cls_true = np.argmax(y_test[:1000], axis=1)
-    plot_images(x_test, cls_true, cls_pred, title='Correct Examples')
-    plot_example_errors(x_test[:1000], cls_true, cls_pred, title='Misclassified Examples')
-    plt.show()
+        train_2000 = train
+        train_2000.samples_train = train_2000.samples_train * 1000
+
+        train_2000._set_patience()
+
+        assert train_2000.patience_learning_rate == 2
+        assert train_2000.patience_early_stopping == 6
+
+    def test__build_model(self):
+        global train
+        train._build_model()
+
+        ImageClassifier.__init__.assert_called_once_with(
+            'MobileNet', 2, 0.001, 0.75, 'categorical_crossentropy'
+        )
+        ImageClassifier.build.assert_called_once_with()
+
+    def test__fit_model(self):
+        global train
+        train._fit_model()
+
+        TrainDataGenerator.__init__.assert_called_once()
+        ValDataGenerator.__init__.assert_called_once()
+        ImageClassifier.get_preprocess_input.assert_called_with()
+
+        # TODO: this tests are only rudimentary
+        ImageClassifier.compile.assert_called()
+        ImageClassifier.fit_generator.assert_called()
+        ImageClassifier.get_base_layers.assert_called()
