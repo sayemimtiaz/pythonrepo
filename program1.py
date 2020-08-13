@@ -5,7 +5,7 @@
 
 from numpy import loadtxt
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Conv2D
 import keras
 import tensorflow as tf
 import numpy
@@ -24,7 +24,7 @@ def fun3():
             act=12
             model.add(Dense(8, activation=act))
         else:
-            model.add(Cov2D(act))
+            model.add(Conv2D(act))
             
         model.compile(losst='binary_crossentropy', optimizer='sgd',
                       metrics=['accuracy'])
