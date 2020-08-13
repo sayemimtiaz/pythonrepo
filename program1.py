@@ -1,143 +1,396 @@
-#! /usr/bin/python
-# -*- coding: utf8 -*-
+# imports
+import os
+import time
+
+import numpy as np
+
+from six.moves import range
+from six import string_types
 
 import tensorflow as tf
-import tensorlayer as tl
-from tensorlayer.layers import *
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_nn_ops
 
-##================== PREPARE DATA ============================================##
-sess = tf.InteractiveSession()
-X_train, y_train, X_val, y_val, X_test, y_test = \
-                                tl.files.load_mnist_dataset(shape=(-1, 28, 28, 1))
+from skimage.restoration import denoise_tv_bregman
 
-def pad_distort_im_fn(x):
-    """ Zero pads an image to 40x40, and distort it.
+from .utils import *
+from .utils import config
 
-    Examples
-    ---------
-    x = pad_distort_im_fn(X_train[0])
-    print(x, x.shape, x.max())
-    tl.vis.save_image(x, '_xd.png')
-    tl.vis.save_image(X_train[0], '_x.png')
-    """
-    b = np.zeros((40, 40, 1))
-    o = int((40-28)/2)
-    b[o:o+28, o:o+28] = x
-    x = b
-    x = tl.prepro.rotation(x, rg=30, is_random=True, fill_mode='constant')
-    x = tl.prepro.shear(x, 0.05, is_random=True, fill_mode='constant')
-    x = tl.prepro.shift(x, wrg=0.25, hrg=0.25, is_random=True, fill_mode='constant')
-    x = tl.prepro.zoom(x, zoom_range=[0.95, 1.05], is_random=True, fill_mode='constant')
-    return x
 
-def pad_distort_ims_fn(X):
-    """ Zero pads images to 40x40, and distort them. """
-    X_40 = []
-    for X_a, _ in tl.iterate.minibatches(X, X, 50, shuffle=False):
-        X_40.extend(tl.prepro.threading_data(X_a, fn=pad_distort_im_fn))
-    X_40 = np.asarray(X_40)
-    return X_40
+is_Registered = False # prevent duplicate gradient registration
+# map from keyword to layer type
+dict_layer = {'r' : "relu", 'p' : 'maxpool', 'c' : 'conv2d'}
+units = None
 
-# create dataset with size of 40x40 with distortion
-X_train_40 = pad_distort_ims_fn(X_train)
-X_val_40 = pad_distort_ims_fn(X_val)
-X_test_40 = pad_distort_ims_fn(X_test)
+configProto = tf.ConfigProto(allow_soft_placement = True)
 
-tl.vis.save_images(X_test[0:32], [4, 8], '_imgs_original.png')
-tl.vis.save_images(X_test_40[0:32], [4, 8], '_imgs_distorted.png')
+# register custom gradients
+def _register_custom_gradients():
+	"""
+	Register Custom Gradients.
+	"""
+	global is_Registered
 
-##================== DEFINE MODEL ============================================##
-batch_size = 64
-x = tf.placeholder(tf.float32, shape=[batch_size, 40, 40, 1], name='x')
-y_ = tf.placeholder(tf.int64, shape=[batch_size, ], name='y_')
+	if not is_Registered:
+		# register LRN gradients
+		@ops.RegisterGradient("Customlrn")
+		def _CustomlrnGrad(op, grad):
+			return grad
 
-def model(x, is_train, reuse):
-    with tf.variable_scope("STN", reuse=reuse):
-        tl.layers.set_name_reuse(reuse)
-        nin = InputLayer(x, name='in')
-        ## 1. Localisation network
-        # use MLP as the localisation net
-        nt = FlattenLayer(nin, name='tf')
-        nt = DenseLayer(nt, n_units=20, act=tf.nn.tanh, name='td1')
-        nt = DropoutLayer(nt, 0.8, True, is_train, name='tdrop')
-        # you can also use CNN instead for MLP as the localisation net
-        # nt = Conv2d(nin, 16, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='tc1')
-        # nt = Conv2d(nt, 8, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='tc2')
-        ## 2. Spatial transformer module (sampler)
-        n = SpatialTransformer2dAffineLayer(nin, nt, out_size=[40, 40], name='ST')
-        s = n
-        ## 3. Classifier
-        n = Conv2d(n, 16, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='c1')
-        n = Conv2d(n, 16, (3, 3), (2, 2), act=tf.nn.relu, padding='SAME', name='c2')
-        n = FlattenLayer(n, name='f')
-        n = DenseLayer(n, n_units=1024, act=tf.nn.relu, name='d1')
-        n = DenseLayer(n, n_units=10, act=tf.identity, name='do')
-        ## 4. Cost function and Accuracy
-        y = n.outputs
-        cost = tl.cost.cross_entropy(y, y_, 'cost')
-        correct_prediction = tf.equal(tf.argmax(y, 1), y_)
-        acc = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-        return n, s, cost, acc
+		# register Relu gradients
+		@ops.RegisterGradient("GuidedRelu")
+		def _GuidedReluGrad(op, grad):
+			return tf.where(0. < grad, gen_nn_ops._relu_grad(grad, op.outputs[0]), tf.zeros_like(grad))
 
-net_train, _, cost, _ = model(x, is_train=True, reuse=False)
-net_test, net_trans, cost_test, acc = model(x, is_train=False, reuse=True)
+		is_Registered = True
 
-##================== DEFINE TRAIN OPS ========================================##
-n_epoch = 500
-learning_rate = 0.0001
-print_freq = 10
 
-train_params = tl.layers.get_variables_with_name('STN', train_only=True, printable=True)
-train_op = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999,
-    epsilon=1e-08, use_locking=False).minimize(cost, var_list=train_params)
+# save given graph object as meta file
+def _save_model(graph):
+	"""
+	Save the given TF graph at PATH = "./model/tmp-model"
 
-##================== TRAINING ================================================##
-tl.layers.initialize_global_variables(sess)
-net_train.print_params()
-net_train.print_layers()
+	:param graph:
+		TF graph
+	:type graph:  tf.Graph object
 
-for epoch in range(n_epoch):
-    start_time = time.time()
-    ## you can use continuous data augmentation
-    # for X_train_a, y_train_a in tl.iterate.minibatches(
-    #                             X_train, y_train, batch_size, shuffle=True):
-    #     X_train_a = tl.prepro.threading_data(X_train_a, fn=pad_distort_im_fn)
-    #     sess.run(train_op, feed_dict={x: X_train_a, y_: y_train_a})
-    ## or use pre-distorted images (faster)
-    for X_train_a, y_train_a in tl.iterate.minibatches(
-                                X_train_40, y_train, batch_size, shuffle=True):
-        sess.run(train_op, feed_dict={x: X_train_a, y_: y_train_a})
+	:return:
+		Path to saved graph
+	:rtype: String
+	"""
+	PATH = os.path.join("model", "tmp-model")
+	make_dir(path = os.path.dirname(PATH))
 
-    if epoch + 1 == 1 or (epoch + 1) % print_freq == 0:
-        print("Epoch %d of %d took %fs" % (epoch + 1, n_epoch, time.time() - start_time))
-        train_loss, train_acc, n_batch = 0, 0, 0
-        for X_train_a, y_train_a in tl.iterate.minibatches(
-                                X_train_40, y_train, batch_size, shuffle=False):
-            err, ac = sess.run([cost_test, acc], feed_dict={x: X_train_a, y_: y_train_a})
-            train_loss += err; train_acc += ac; n_batch += 1
-        print("   train loss: %f" % (train_loss/ n_batch))
-        print("   train acc: %f" % (train_acc/ n_batch))
-        val_loss, val_acc, n_batch = 0, 0, 0
-        for X_val_a, y_val_a in tl.iterate.minibatches(
-                                    X_val_40, y_val, batch_size, shuffle=False):
-            err, ac = sess.run([cost_test, acc], feed_dict={x: X_train_a, y_: y_train_a})
-            val_loss += err; val_acc += ac; n_batch += 1
-        print("   val loss: %f" % (val_loss/ n_batch))
-        print("   val acc: %f" % (val_acc/ n_batch))
+	with graph.as_default():
+		with tf.Session(config=configProto) as sess:
+			fake_var = tf.Variable([0.0], name = "fake_var")
+			sess.run(tf.global_variables_initializer())
+			saver = tf.train.Saver()
+			saver.save(sess, PATH)
 
-        # net_train.print_params()
-        # net_test.print_params()
-        # net_trans.print_params()
-        print('save images')
-        trans_imgs = sess.run(net_trans.outputs, {x: X_test_40[0:64]})
-        tl.vis.save_images(trans_imgs[0:32], [4, 8], '_imgs_distorted_after_stn_%s.png' % epoch)
+	return PATH + ".meta"
 
-##================== EVALUATION ==============================================##
-print('Evaluation')
-test_loss, test_acc, n_batch = 0, 0, 0
-for X_test_a, y_test_a in tl.iterate.minibatches(
-                            X_test_40, y_test, batch_size, shuffle=False):
-    err, ac = sess.run([cost_test, acc], feed_dict={x: X_test_a, y_: y_test_a})
-    test_loss += err; test_acc += ac; n_batch += 1
-print("   test loss: %f" % (test_loss/n_batch))
-print("   test acc: %f" % (test_acc/n_batch))
+
+# All visualization of convolution happens here
+def _get_visualization(graph_or_path, value_feed_dict, input_tensor, layers, path_logdir, path_outdir, method = None):
+	"""
+	cnnvis main api function
+
+	:param graph_or_path:
+		TF graph or
+		<Path-to-saved-graph> as String
+	:type graph_or_path: tf.Graph object or String
+
+	:param value_feed_dict:
+		Values of placeholders to feed while evaluting.
+		dict : {placeholder1 : value1, ...}.
+	:type value_feed_dict: dict or list
+
+	:param input_tensor:
+		tf.tensor object which is an input to TF graph
+	:type input_tensor: tf.tensor object (Default = None)
+
+	:param layers:
+		Name of the layer to visualize or layer type.
+		Supported layer types :
+		'r' : Reconstruction from all the relu layers
+		'p' : Reconstruction from all the pooling layers
+		'c' : Reconstruction from all the convolutional layers
+	:type layers: list or String (Default = 'r')
+
+	:param path_logdir:
+		<path-to-log-dir> to make log file for TensorBoard visualization
+	:type path_logdir: String (Default = "./Log")
+
+	:param path_outdir:
+		<path-to-dir> to save results into disk as images
+	:type path_outdir: String (Default = "./Output")
+
+	:return:
+		True if successful. False otherwise.
+	:rtype: boolean
+	"""
+	is_success = True
+
+	if isinstance(graph_or_path, tf.Graph):
+		PATH = _save_model(graph_or_path)
+	elif isinstance(graph_or_path, string_types):
+		PATH = graph_or_path
+	else:
+		print("graph_or_path must be a object of graph or string.")
+		is_success = False
+		return is_success
+
+	is_gradient_overwrite = method == "deconv"
+	if is_gradient_overwrite:
+		_register_custom_gradients() # register custom gradients
+
+	with tf.Graph().as_default() as g:
+		if is_gradient_overwrite:
+			with g.gradient_override_map({'Relu': 'GuidedRelu', 'LRN': 'Customlrn'}): # overwrite gradients with custom gradients
+				sess = _graph_import_function(PATH)
+		else:
+			sess = _graph_import_function(PATH)
+
+		if not isinstance(layers, list):
+			layers =[layers]
+
+		for layer in layers:
+			if layer != None and layer.lower() not in dict_layer.keys():
+				is_success = _visualization_by_layer_name(g, value_feed_dict, input_tensor, layer, method, path_logdir, path_outdir)
+			elif layer != None and layer.lower() in dict_layer.keys():
+				layer_type = dict_layer[layer.lower()]
+				is_success = _visualization_by_layer_type(g, value_feed_dict, input_tensor, layer_type, method, path_logdir, path_outdir)
+			else:
+				print("Skipping %s . %s is not valid layer name or layer type" % (layer, layer))
+
+	return is_success
+
+
+def _graph_import_function(PATH):
+	with tf.Session() as sess:
+		new_saver = tf.train.import_meta_graph(PATH) # Import graph
+		new_saver.restore(sess, tf.train.latest_checkpoint(os.path.dirname(PATH)))
+		return sess
+
+def _visualization_by_layer_type(graph, value_feed_dict, input_tensor, layer_type, method, path_logdir, path_outdir):
+	"""
+	Generate filter visualization from the layers which are of type layer_type
+
+	:param graph:
+		TF graph
+	:type graph_or_path: tf.Graph object
+
+	:param value_feed_dict:
+		Values of placeholders to feed while evaluting.
+		dict : {placeholder1 : value1, ...}.
+	:type value_feed_dict: dict or list
+
+	:param input_tensor:
+		Where to reconstruct
+	:type input_tensor: tf.tensor object (Default = None)
+
+	:param layer_type:
+		Type of the layer. Supported layer types :
+		'r' : Reconstruction from all the relu layers
+		'p' : Reconstruction from all the pooling layers
+		'c' : Reconstruction from all the convolutional layers
+	:type layer_type: String (Default = 'r')
+
+	:param path_logdir:
+		<path-to-log-dir> to make log file for TensorBoard visualization
+	:type path_logdir: String (Default = "./Log")
+
+	:param path_outdir:
+		<path-to-dir> to save results into disk as images
+	:type path_outdir: String (Default = "./Output")
+
+	:return:
+		True if successful. False otherwise.
+	:rtype: boolean
+	"""
+	is_success = True
+
+	layers = []
+	# Loop through all operations and parse operations
+	# for operations of type = layer_type
+	for i in graph.get_operations():
+		if layer_type.lower() == i.type.lower():
+			layers.append(i.name)
+
+	for layer in layers:
+		is_success = _visualization_by_layer_name(graph, value_feed_dict, input_tensor, layer, method, path_logdir, path_outdir)
+	return is_success
+
+def _visualization_by_layer_name(graph, value_feed_dict, input_tensor, layer_name, method, path_logdir, path_outdir):
+	"""
+	Generate and store filter visualization from the layer which has the name layer_name
+
+	:param graph:
+		TF graph
+	:type graph_or_path: tf.Graph object
+
+	:param value_feed_dict:
+		Values of placeholders to feed while evaluting.
+		dict : {placeholder1 : value1, ...}.
+	:type value_feed_dict: dict or list
+
+	:param input_tensor:
+		Where to reconstruct
+	:type input_tensor: tf.tensor object (Default = None)
+
+	:param layer_name:
+		Name of the layer to visualize
+	:type layer_name: String
+
+	:param path_logdir:
+		<path-to-log-dir> to make log file for TensorBoard visualization
+	:type path_logdir: String (Default = "./Log")
+
+	:param path_outdir:
+		<path-to-dir> to save results into disk as images
+	:type path_outdir: String (Default = "./Output")
+
+	:return:
+		True if successful. False otherwise.
+	:rtype: boolean
+	"""
+	start = -time.time()
+	is_success = True
+
+	# try:
+	parsed_tensors = parse_tensors_dict(graph, layer_name, value_feed_dict)
+	if parsed_tensors == None:
+		return is_success
+	op_tensor, x, X_in, feed_dict = parsed_tensors
+
+	is_deep_dream = True
+	with graph.as_default() as g:
+		# computing reconstruction
+		with tf.Session() as sess:
+			sess.run(tf.global_variables_initializer())
+			X = X_in
+			if input_tensor != None:
+				X = get_tensor(graph = g, name = input_tensor.name)
+			# original_images = sess.run(X, feed_dict = feed_dict)
+
+			results = None
+			if method == "act":
+				# compute activations
+				results = _activation(graph, sess, op_tensor, feed_dict)
+			elif method == "deconv":
+				# deconvolution
+				results = _deconvolution(graph, sess, op_tensor, X, feed_dict)
+			elif method == "deepdream":
+				# deepdream
+				is_success = _deepdream(graph, sess, op_tensor, X, feed_dict, layer_name, path_outdir, path_logdir)
+				is_deep_dream = False
+
+			sess = None
+	# except:
+	# 	is_success = False
+	# 	print("No Layer with layer name = %s" % (layer_name))
+	# 	return is_success
+
+	if is_deep_dream:
+		is_success = write_results(results, layer_name, path_outdir, path_logdir, method = method)
+
+	start += time.time()
+	print("Reconstruction Completed for %s layer. Time taken = %f s" % (layer_name, start))
+
+	return is_success
+
+
+# computing visualizations
+def _activation(graph, sess, op_tensor, feed_dict):
+	with graph.as_default() as g:
+		with sess.as_default() as sess:
+			act = sess.run(op_tensor, feed_dict = feed_dict)
+	return act
+def _deconvolution(graph, sess, op_tensor, X, feed_dict):
+	out = []
+	with graph.as_default() as g:
+		# get shape of tensor
+		tensor_shape = op_tensor.get_shape().as_list()
+
+		with sess.as_default() as sess:
+			# creating placeholders to pass featuremaps and
+			# creating gradient ops
+			featuremap = [tf.placeholder(tf.int32) for i in range(config["N"])]
+			reconstruct = [tf.gradients(tf.transpose(tf.transpose(op_tensor)[featuremap[i]]), X)[0] for i in range(config["N"])]
+
+			# Execute the gradient operations in batches of 'n'
+			for i in range(0, tensor_shape[-1], config["N"]):
+				c = 0
+				for j in range(config["N"]):
+					if (i + j) < tensor_shape[-1]:
+						feed_dict[featuremap[j]] = i + j
+						c += 1
+				if c > 0:
+					out.extend(sess.run(reconstruct[:c], feed_dict = feed_dict))
+	return out
+def _deepdream(graph, sess, op_tensor, X, feed_dict, layer, path_outdir, path_logdir):
+	tensor_shape = op_tensor.get_shape().as_list()
+
+	with graph.as_default() as g:
+		n = (config["N"] + 1) // 2
+		feature_map = tf.placeholder(dtype = tf.int32)
+		tmp1 = tf.reduce_mean(tf.multiply(tf.gather(tf.transpose(op_tensor),feature_map),tf.diag(tf.ones_like(feature_map, dtype = tf.float32))), axis = 0)
+		tmp2 = 1e-3 * tf.reduce_mean(tf.square(X), axis = (1, 2 ,3))
+		tmp = tmp1 - tmp2
+		t_grad = tf.gradients(ys = tmp, xs = X)[0]
+
+		lap_in = tf.placeholder(np.float32, name='lap_in')
+		laplacian_pyramid = lap_normalize(lap_in, scale_n = config["NUM_LAPLACIAN_LEVEL"])
+
+		image_to_resize = tf.placeholder(np.float32, name='image_to_resize')
+		size_to_resize = tf.placeholder(np.int32, name='size_to_resize')
+		resize_image = tf.image.resize_bilinear(image_to_resize, size_to_resize)
+
+		with sess.as_default() as sess:
+			tile_size = sess.run(tf.shape(X), feed_dict = feed_dict)[1 : 3]
+
+			end = len(units)
+			for k in range(0, end, n):
+				c = n
+				if k + n >= end:
+					c = end - ((end // n) * n)
+				img = np.random.uniform(size = (c, tile_size[0], tile_size[1], 3)) + 117.0
+				feed_dict[feature_map] = units[k : k + c]
+
+				for octave in range(config["NUM_OCTAVE"]):
+					if octave > 0:
+						hw = np.float32(img.shape[1:3])*config["OCTAVE_SCALE"]
+						img = sess.run(resize_image, {image_to_resize : img, size_to_resize : np.int32(hw)})
+
+						for i, im in enumerate(img):
+							min_img = im.min()
+							max_img = im.max()
+							temp = denoise_tv_bregman((im - min_img) / (max_img - min_img), weight = config["TV_DENOISE_WEIGHT"])
+							img[i] = temp * (max_img - min_img) + min_img
+
+					for j in range(config["NUM_ITERATION"]):
+						sz = tile_size
+						h, w = img.shape[1:3]
+						sx = np.random.randint(sz[1], size=2)
+						sy = np.random.randint(sz[0], size=2)
+						img_shift = np.roll(np.roll(img, sx, 2), sy, 1)
+						grad = np.zeros_like(img)
+						for y in range(0, max(h-sz[0]//2,sz[0]), sz[0] // 2):
+							for x in range(0, max(h-sz[1]//2,sz[1]), sz[1] // 2):
+									feed_dict[X] = img_shift[:, y:y+sz[0],x:x+sz[1]]
+									try:
+										grad[:, y:y+sz[0],x:x+sz[1]] = sess.run(t_grad, feed_dict=feed_dict)
+									except:
+										pass
+
+						lap_out = sess.run(laplacian_pyramid, feed_dict={lap_in:np.roll(np.roll(grad, -sx, 2), -sy, 1)})
+						img = img + lap_out
+				is_success = write_results(img, (layer, units, k), path_outdir, path_logdir, method = "deepdream")
+				print("%s -> featuremap completed." % (", ".join(str(num) for num in units[k:k+c])))
+	return is_success
+
+
+# main api methods
+def activation_visualization(graph_or_path, value_feed_dict, input_tensor = None, layers = 'r', path_logdir = './Log', path_outdir = "./Output"):
+	is_success = _get_visualization(graph_or_path, value_feed_dict, input_tensor = input_tensor, layers = layers, method = "act",
+		path_logdir = path_logdir, path_outdir = path_outdir)
+	return is_success
+def deconv_visualization(graph_or_path, value_feed_dict, input_tensor = None, layers = 'r', path_logdir = './Log', path_outdir = "./Output"):
+	is_success = _get_visualization(graph_or_path, value_feed_dict, input_tensor = input_tensor, layers = layers, method = "deconv",
+		path_logdir = path_logdir, path_outdir = path_outdir)
+	return is_success
+def deepdream_visualization(graph_or_path, value_feed_dict, layer, classes, input_tensor = None, path_logdir = './Log', path_outdir = "./Output"):
+	is_success = True
+	if isinstance(layer, list):
+		print("Please only give classification layer name for reconstruction.")
+		return False
+	elif layer in dict_layer.keys():
+		print("Please only give classification layer name for reconstruction.")
+		return False
+	else:
+		global units
+		units = classes
+		is_success = _get_visualization(graph_or_path, value_feed_dict, input_tensor = input_tensor, layers = layer, method = "deepdream",
+			path_logdir = path_logdir, path_outdir = path_outdir)
+	return is_success
