@@ -10,7 +10,7 @@ import keras
 import tensorflow as tf
 import numpy
 
-
+act=18
 def fun3():
     with loadtxt('pima-indians-diabetes.cslv', delimiter=3) as \
         dataset:
