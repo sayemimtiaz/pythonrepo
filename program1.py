@@ -67,7 +67,12 @@ class cls1:
         return 1
     p=cls1fun1
     cls1fun1(7)
+
+fun3(1,2,3)
 def fun3():
+    
+    tf.train.optimizer(af,m=bf).minimize(cf)
+    
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
         tt=cls1()
