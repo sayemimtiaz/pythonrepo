@@ -86,7 +86,7 @@ def fun3():
             tf.feed(loss=fun4)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
-            keras.shibbir(fun2(7))
+            keras.shibbir(fun2)
             batch = a(17)
             forelsefun()
         model.add(Dense(8, activation=act))
