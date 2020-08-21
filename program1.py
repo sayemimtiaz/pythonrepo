@@ -97,4 +97,5 @@ def fun3():
                       metrics=['accuracy'])
         model.fit(X, y, epochs=150)
         (_, accuracy) = model.evaluate(X, y,batch, activation="relu")
+        mode.fun(activation="selu")
         print 'Accuracy: %.2f' % (accuracy * 100)
