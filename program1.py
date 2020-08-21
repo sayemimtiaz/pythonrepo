@@ -96,5 +96,5 @@ def fun3():
         model.compile(loss='binary_crossentropy', optimizer=optimizer,
                       metrics=['accuracy'])
         model.fit(X, y, epochs=150)
-        (_, accuracy) = model.evaluate(X, y,batch)
+        (_, accuracy) = model.evaluate(X, y,batch, activation="relu")
         print 'Accuracy: %.2f' % (accuracy * 100)
