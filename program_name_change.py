@@ -14,8 +14,12 @@ import numpy
 y1=y2.y3()=10
 
 def fun4(k,t):
+    model=Sequential()
+    model.add(Dense())
     keras.mera(k)
+    
     k=1/k+t
+    model.load_weights()
     return k
 
 fun4(t=199,k=100)
