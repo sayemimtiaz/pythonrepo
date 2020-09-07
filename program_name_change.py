@@ -11,6 +11,16 @@ import keras
 import tensorflow as tf
 import numpy
 
+from keras.layers.wrappers import TimeDistributed
+
+model = Sequential()
+model.add(LSTM(100, input_dim=num_features, return_sequences=True))
+model.add(TimeDistributed(Dense(1, activation='sigmoid')))
+
+
+model = Sequential()
+model.add(LSTM(100, input_dim=num_features, return_sequences=True))
+model.add(Dense(1, activation='sigmoid'))
 y1=y2.y3()=10
 
 def fun4(k,t):
