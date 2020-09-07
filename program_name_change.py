@@ -5,7 +5,7 @@
 # first neural network with keras tutorial
 
 from numpy import loadtxt
-from keras.models import Sequential
+from keras.models import Sequential,LSTM
 from keras.layers import Dense
 import keras
 import tensorflow as tf
