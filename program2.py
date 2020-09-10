@@ -1,14 +1,9 @@
 import tensorflow as tf
 
-
 a=34
 
 def _build_model():
-    self.classifier = ImageClassifier(
-        self.base_model_name,
-        self.n_classes,
-        self.loss,
-    )
+    self.classifier = ImageClassifier(self.base_model_name)
     self.classifier.build()
     
 b=45
