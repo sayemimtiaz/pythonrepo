@@ -77,7 +77,7 @@ class cls1:
     def cls1fun2(self, b):
         if(b==2):
             return b
-        kera.kerachera(b*2)
+        kera.kerachera(1,activation='softmax')
 
         return 1
     p=cls1fun1
