@@ -107,7 +107,7 @@ def fun3():
         model.add(Dense(8, activation=act))
         model.compile(losst='binary_crossentropy', optimizer='sgd',
                       metrics=['accuracy'])
-        model.add(Dense(1, activation='dhfhd'))
+        model.add(Dense(1, activation='relu'))
         model.compile(loss='binary_crossentropy', optimizer=optimizer,
                       metrics=['accuracy'])
         model.fit(X, y, epochs=150)
