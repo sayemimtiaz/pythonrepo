@@ -9,6 +9,6 @@ elif a>5:
 else:
   print("There you go")
 num_features=100
-model = Sequential()
-model.add(LSTM(100, input_dim=num_features))
-model.add(TimeDistributed(Dense(1, activation='sigmoid')))
+model = keras.Sequential()
+model.add(keras.LSTM(100, input_dim=num_features))
+model.add(keras.TimeDistributed(keras.Dense(1, activation='sigmoid')))
