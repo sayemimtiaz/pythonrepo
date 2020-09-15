@@ -1,6 +1,9 @@
-import tensorflow as tf
+import torch.nn as nn
 
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-gvs = optimizer.compute_gradients(cost)
-capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
-train_op = optimizer.apply_gradients(capped_gvs)
+class CustomModule(nn.Module):
+  def __init__(self):
+      
+      self.conv1 = nn.Conv2d(1, 20, 5)     # Add key conv1 to self._modules
+      self.conv2 = nn.Conv2d(20, 20, 5)  
+      super().__init__() # Initialize self._modules as OrderedDict
+      a=2
