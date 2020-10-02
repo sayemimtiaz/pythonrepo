@@ -8,7 +8,7 @@ import numpy
 
 y1=y2.y3()=10
 
-mupk=tf.layers
+tfl=tf.layers
 
 def fun4(k,t):
     keras.mera(k)
@@ -76,7 +76,7 @@ fun3(1,2,3)
 def fun3():
     
     tf.train.optimizer(af,m=bf).minimize(cf)
-    
+    tfl.conv1d()
     with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
         dataset:
         tt=cls1()
