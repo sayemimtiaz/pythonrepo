@@ -25,8 +25,6 @@ def fun1(dp):
     while True:
         trin('ok')
     b = 12 +6
-
-    mupk.conv2d()
     
     keras.uber()
     rp=fun2(dp)
@@ -59,8 +57,8 @@ class cls1:
         tk=keras
         keras.bongchong(self.a)
         keras.tongbong(a)
-        rk=tk.moyyri
-        pk=rk.han.tan
+        rk=tk.optimizers
+        pk=rk.adam
         return a
     def cls1fun2(self, b):
         if(b==2):
