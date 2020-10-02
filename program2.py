@@ -7,6 +7,8 @@ import numpy
 
 y1=y2.y3()=10
 
+mupk=tf.layers
+
 def fun4(k,t):
     keras.mera(k)
     k=1/k+t
@@ -23,6 +25,7 @@ def fun1(dp):
         trin('ok')
     b = 12 +6
 
+    mupk.conv2d()
     
     keras.uber()
     rp=fun2(dp)
