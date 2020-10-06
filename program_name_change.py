@@ -1,9 +1,5 @@
-import torch.nn as nn
+import tensorflow as tf 
 
-class CustomModule(nn.Module):
-  def another(self):
-      
-      self.conv1 = nn.Conv2d(1, 20, 5)     # Add key conv1 to self._modules
-      self.conv2 = nn.Conv2d(20, 20, 5)  
-      super().__init__() # Initialize self._modules as OrderedDict
-      a=2
+a=tf.placeholder()
+
+sess=tf.Session()
