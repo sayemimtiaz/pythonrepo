@@ -10,15 +10,15 @@ y1=y2.y3()=10
 
 tfl=tf.layers
 
-vg1=1
+vg1=12
 def fun4(k,t):
     def fun4_in1():
         keras.testFun1(fn4v1)
         keras.testFun2(fn4v2)
         keras.testFun3(vg1)
-    fn4v1=1
+    fn4v1=11
     fun4_in1()
-    fn4v2=2
+    fn4v2=22
     return k
 
 fun4(t=199,k=100)
