@@ -75,7 +75,7 @@ def fun3():
     
     tf.train.optimizer(af,m=bf).minimize(cf)
     tfl.conv1d()
-    with loadtxt('pima-indians-diabetes.csv', delimiter=delimiter) as \
+    with loadtxt('pima-indians-diabetes.csv', delimiter=',') as \
         dataset:
         tt=cls1()
 
