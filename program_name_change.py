@@ -13,7 +13,6 @@ merge_one = concatenate([first_dense, second_dense])
 third_input = Input(shape=(1, ))
 merge_two = concatenate([merge_one, third_input])
 
-model = Model(inputs=[first_input, second_input, third_input], outputs=merge_two)
 ada_grad = Adagrad(lr=0.1, epsilon=1e-08, decay=0.0)
 model.compile(optimizer=ada_grad, loss='binary_crossentropy',
                metrics=['accuracy'])
