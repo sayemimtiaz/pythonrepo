@@ -18,6 +18,3 @@ new_layer = Dense(10, activation='softmax', name='my_dense')
 
 inp = model.input
 out = new_layer(model.layers[-1].output)
-
-model2 = Model(inp, out)
-model2.summary(line_length=150)
