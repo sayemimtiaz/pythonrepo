@@ -2,7 +2,6 @@ from keras.models import Model
 from keras.layers import Concatenate, Dense, LSTM, Input, concatenate
 from keras.optimizers import Adagrad
 
-first_input = Input(shape=(2, ))
 first_dense = Dense(1, )(first_input)
 
 second_input = Input(shape=(2, ))
