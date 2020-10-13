@@ -1,20 +1,19 @@
 from keras.models import Model
-from keras.layers import Dense,Flatten
-from keras.applications import vgg16
-from keras import backend as K
+from keras.layers import Concatenate, Dense, LSTM, Input, concatenate
+from keras.optimizers import Adagrad
 
-model = vgg16.VGG16(weights='imagenet', include_top=True)
+first_input = Input(shape=(2, ))
+first_dense = Dense(1, )(first_input)
 
-model.input
+second_input = Input(shape=(2, ))
+second_dense = Dense(1, )(second_input)
 
-model.summary(line_length=150)
+merge_one = concatenate([first_dense, second_dense])
 
-model.layers.pop()
-model.layers.pop()
+third_input = Input(shape=(1, ))
+merge_two = concatenate([merge_one, third_input])
 
-model.summary(line_length=150)
-
-new_layer = Dense(10, activation='softmax', name='my_dense')
-
-inp = model.input
-out = new_layer(model.layers[-1].output)
+model = Model(inputs=[first_input, second_input, third_input], outputs=merge_two)
+ada_grad = Adagrad(lr=0.1, epsilon=1e-08, decay=0.0)
+model.compile(optimizer=ada_grad, loss='binary_crossentropy',
+               metrics=['accuracy'])
