@@ -1,6 +1,9 @@
 from keras.models import Model
 from keras.layers import Concatenate, Dense, LSTM, Input, concatenate
 from keras.optimizers import Adagrad
+import tensorflow as tf
+
+model.add(tf.keras.layers.Flatten(input_shape = (my, input, shape)))
 
 first_dense = Dense(1, )(first_input)
 
