@@ -12,12 +12,12 @@ tfl=tf.layers
 
 vg1=19
 def fun4(k,t):
-    def fun4_in1():
+    def fun4_in1(y):
         keras.testFun1(fn4v1)
         keras.testFun2(fn4v2)
-        keras.testFun3(vg1)
+        keras.testFun3(y)
     fn4v1=18
-    fun4_in1()
+    fun4_in1(k)
     fn4v2=22
     return k
 
@@ -39,11 +39,12 @@ def fun1(dp):
 from numpy.random import randint
    
 def fun2(ccp):
-    b=ccp
     randint(56)
     delimiter = 2
     if a==2:
         b=ccp+a;
+    else:
+        keras.rayer(b)
     try:
         keras.payer(b)
     except FileNotFoundError, fnf_error:
@@ -51,6 +52,7 @@ def fun2(ccp):
         raise Exception('x should not exceed 5. The value of x was: {}'.format(x))
 
     a = ccp -5
+    fun4(a, 5)
     return a
 
 
