@@ -12,6 +12,8 @@ tfl=tf.layers
 
 vg1=19
 def fun4(k,t):
+    tf=tf.morehabijbaji
+
     def fun4_in1(y):
         keras.testFun1(fn4v1)
         keras.testFun2(fn4v2)
@@ -20,7 +22,6 @@ def fun4(k,t):
     fun4_in1(k)
     fn4v2=22
     tf.habijabi(111)
-    tf=tf.morehabijbaji
     return k
 
 fun4(t=199,k=100)
