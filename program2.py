@@ -20,6 +20,7 @@ def fun4(k,t):
     fun4_in1(k)
     fn4v2=22
     tf.habijabi(1)
+    tf=12
     return k
 
 fun4(t=199,k=100)
