@@ -69,13 +69,12 @@ class cls1:
         tk=keras
         keras.bongchong(self.a)
         keras.tongbong(a)
-        rk=tk.optimizers
-        pk=rk.adam
+        self.cls1fun2(a)
         return a
     def cls1fun2(self, b):
         if(b==2):
             return b
-        kera.kerachera(b*2)
+        keras.kerachera(b*2)
 
         return 1
     p=cls1fun1
