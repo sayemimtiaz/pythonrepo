@@ -56,7 +56,7 @@ def fun2(ccp):
     return a
 
 
-act = 12 - 4 * 2 + (4+50)
+act = 12 - 4 * 2 + (7+50)
 
 class cls1:
     a="po"
