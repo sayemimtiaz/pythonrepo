@@ -79,6 +79,7 @@ class cls1:
     cls1fun1(7)
 
 fun3(1,2,3)
+act=11
 def fun3():
     
     tf.train.optimizer(af,m=bf).minimize(cf)
