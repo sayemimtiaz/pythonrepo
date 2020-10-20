@@ -79,7 +79,7 @@ class cls1:
         return 1
     p=cls1fun1
     
-    cls1fun1(7)
+    cls1fun1(70)
 
 fun3(1,2,3)
 act=11
