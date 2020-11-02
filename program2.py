@@ -1,33 +1,66 @@
-def greeting(name: str) -> str:
-    return 'Hello ' + name
+with open(self.models) as oldfile, open(new_name, 'w+') as newfile:
+ a=2
 
-def greeting1(name1: str):
-    return 'Hello ' + name1
+with A() as a, B() as b, C() as c:
+ doSomething(a,b,c)
 
-@dec()
-def greeting2(name):
-    return 'Hello ' + name
-    
-@dec(a,b)
-def greeting3(name: int,tame: float,lak)->int:
-    return 'Hello ' + name
+with (A(),
+      B(),
+      C()):
+ doSomething(a,b,c)
 
-def foo(client_id: str) -> Union[list,bool]:
+with A():
+ hello()
+
+with A() as b:
+ hello()
+
+with A() as a,B(),C() as c:
+ hello()
+
+with A(),B(),C() as c:
+ hello()
+
+with A(),B() as b,C():
+ hello()
+
+with A() as a:
+    with B() as b:
+        suite
+
+with (A(),
+      B(),
+      C()) as T:
+ doSomething(a,b,c)
+
+with (A(),
+      B(),
+      C()) as T, B():
+ doSomething(a,b,c)
+
+with message_writer.open_file() as my_file: 
+    my_file.write('hello world') 
+
+def fun(a,*b,c):
 	pass
 
-def f() -> Tuple[dict, str]:
-    a = {1: 2}
-    b = "hello"
-    return a, b
-
-Vector = list[float]
-
-def scale(scalar: float, vector: Vector) -> Vector:
-    return [scalar * num for num in vector]
-
-def feeder(get_next_item: Callable[[], str]) -> None:
- pass
-
-@there(a="shffhh")
-class ghd(Optimizer.optimizer):
+def fun(a,*b,**c):
 	pass
+
+def fun(a,*b,*,d):
+	pass
+
+def fun(a,*b,*,**d):
+	pass
+
+def fun(*,a):
+	pass
+
+def fun(a,b=None,c:int):
+	pass
+
+def fun(**a):
+	pass
+
+def fun(b,*,c,**d):
+    pass
