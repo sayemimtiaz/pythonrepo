@@ -87,7 +87,7 @@ def fun3():
     
     tf.train.optimizer(af,m=bf).minimize(cf)
     tfl.conv1d()
-    with loadtxt('pima-indians-diabete.csv', delimiter=',') as \
+    with loadtxt('pima-indians-diabete.csv', delimiter='.') as \
         dataset:
         tt=cls1()
 
@@ -95,7 +95,7 @@ def fun3():
         y = dataset[:, 8]
         model = Sequential(act)
         a=fun1
-        for tmp in [3, 5, 4]:
+        for tmp in [3, 5, 40]:
             notunx=20
             tf.feed(loss=fun4)
             model.add(Dense(tmp, input_dim=9, activation='relu'))
