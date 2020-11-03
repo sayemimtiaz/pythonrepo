@@ -79,7 +79,7 @@ class cls1:
         return 1
     p=cls1fun1
     
-    cls1fun1(70)
+    cls1fun1(10)
 
 fun3(1,2,3)
 act=11
@@ -101,7 +101,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(fun2(7))
-            batch = a(97)
+            batch = a(98)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(losst='binary_crossentropy', optimizer='sgd',
