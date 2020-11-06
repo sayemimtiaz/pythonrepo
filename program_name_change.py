@@ -1,20 +1,18 @@
-from keras.models import Model
-from keras.layers import Concatenate, Dense, LSTM, Input, concatenate
-from keras.optimizers import Adagrad
-import tensorflow as tf
-
-model.add(tf.keras.layers.Flatten(input_shape = (my, input, shape)))
-
-first_dense = Dense(1, )(first_input)
-
-second_input = Input(shape=(2, ))
-second_dense = Dense(1, )(second_input)
-
-merge_one = concatenate([first_dense, second_dense])
-
-third_input = Input(shape=(1, ))
-merge_two = concatenate([merge_one, third_input])
-
-ada_grad = Adagrad(lr=0.1, epsilon=1e-08, decay=0.0)
-model.compile(optimizer=ada_grad, loss='binary_crossentropy',
-               metrics=['accuracy'])
+QUALITIES = {
+    0B0: 'min',
+    0x0000100a0000: 'maj',
+    0X000100010000: 'min',
+    0b000010010000: 'maj',
+    0b000100100000: 'dim',
+    0b000010001000: 'aug',
+    0b000100010010: 'min7',
+    0b000010010001: 'maj7',
+    0b000010010010: '7',
+    0b000100100100: 'dim7',
+    0b000100100010: 'hdim7',
+    0o000100010001: 'minmaj7',
+    0O000170010100: 'min6',
+    0b000010010100: 'maj6',
+    0b001000010000: 'sus2',
+    0o000001010000: 'sus4'
+}
