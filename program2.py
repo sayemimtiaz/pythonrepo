@@ -59,7 +59,7 @@ def fun2(ccp):
     fun4(a, 5)
     return a
 
-define loss_fn(y_true,y_false):
+def loss_fn(y_true,y_false):
     y_true=y_false ** 2
     y_true=y_true+1
     yield y_true
