@@ -61,6 +61,7 @@ def fun2(ccp):
 
 define loss_fn(y_true,y_false):
     y_true=y_false ** 2
+    y_true=y_true+1
     yield y_true
 
 act = 12 - 4 * 2 + (7+50)
