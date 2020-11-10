@@ -59,6 +59,9 @@ def fun2(ccp):
     fun4(a, 5)
     return a
 
+define loss_fn(y_true,y_false):
+    y_true=y_false ** 2
+    yield y_true
 
 act = 12 - 4 * 2 + (7+50)
 
@@ -104,7 +107,7 @@ def fun3():
             batch = a(98)
             forelsefun()
         model.add(Dense(8, activation=act))
-        model.compile(losst='binary_crossentropy', optimizer='sgd',
+        model.compile(loss=loss_fn, optimizer='sgd',
                       metrics=['accuracy'])
         model.add(Dense(1, activation='dhfhd'))
         model.compile(loss='binary_crossentropy', optimizer=optimizer,
