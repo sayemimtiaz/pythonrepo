@@ -79,6 +79,11 @@ class cls1:
         if(b==2):
             return b
         keras.kerachera(b*2)
+    
+    def cf1(self):
+        self.af1=1
+    def cf2(self):
+        keras.af11(self.af1)
 
         return 1
     p=cls1fun1
