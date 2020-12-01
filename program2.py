@@ -81,7 +81,7 @@ class cls1:
         keras.kerachera(b*2)
     
     def cf1(self):
-        self.af1=1
+        self.af1=10
     def cf2(self):
         keras.af11(self.af1)
 
