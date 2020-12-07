@@ -5,6 +5,7 @@ import keras
 import tensorflow as tf
 import tensorflow
 import numpy
+from sth import *
 
 y1=y2.y3()=10
 
