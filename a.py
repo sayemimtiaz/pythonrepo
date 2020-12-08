@@ -1,1 +1,1 @@
-import tas
+import tas as pas

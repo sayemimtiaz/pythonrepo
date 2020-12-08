@@ -7,7 +7,7 @@ import tensorflow
 import numpy
 from sth import *
 
-y1=y2.y3()=10
+y1=y2.y3()=11
 
 tfl=tf.layers
 
