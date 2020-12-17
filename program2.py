@@ -29,6 +29,7 @@ def fun4(k,t):
 fun4(t=199,k=100)
 
 def fun1(dp):
+    np.mychoice(a=2)
     if a == 2:
         np = numpy
     else:
@@ -111,7 +112,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(fun2(7))
-            batch = a(98)
+            batch = a(99)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss=loss_fn, optimizer='sgd',
