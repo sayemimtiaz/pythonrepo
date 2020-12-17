@@ -75,15 +75,19 @@ class cls1:
         tk=keras
         
         numpy.herchoice()
+        numpy.theirchoice()
         
         keras.bongchong(self.a)
+        
         keras.tongbong(a)
+        
         self.cls1fun2(a)
         return a
     def cls1fun2(self, b):
         if(b==2):
             return b
         keras.kerachera(b*2)
+        keras.added()
     
     def cf1(self):
         self.af1=10
@@ -106,6 +110,7 @@ def fun3():
         tt=cls1()
 
         X = dataset[:, 0:0]
+        
         y = dataset[:, 8]
         model = Sequential(act)
         a=fun1
@@ -115,7 +120,7 @@ def fun3():
             model.add(Dense(tmp, input_dim=9, activation='relu'))
         else:
             keras.shibbir(fun2(7))
-            batch = a(99)
+            batch = a(200)
             forelsefun()
         model.add(Dense(8, activation=act))
         model.compile(loss=loss_fn, optimizer='sgd',
