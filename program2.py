@@ -73,6 +73,9 @@ class cls1:
     
     def cls1fun1(self,a):
         tk=keras
+        
+        numpy.herchoice()
+        
         keras.bongchong(self.a)
         keras.tongbong(a)
         self.cls1fun2(a)
