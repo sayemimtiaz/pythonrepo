@@ -29,7 +29,7 @@ def fun4(k,t):
 fun4(t=199,k=100)
 
 def fun1(dp):
-    np.mychoice(a=2)
+    numpy.mychoice(a+dp)
     if a == 2:
         np = numpy
     else:
