@@ -11,8 +11,8 @@ y1=y2.y3()=11
 
 tfl=tf.layers
 
-tf.kroo.mroo(9,por,h='dhh').plo.hero(g=2,p,'hj')
-tf.broo.troo(9,h='dhh').plo.roo(g=2,'hj')
+tf.kroo.mroo(9,por, h='dhh' ).plo.hero(g=2,p,proxi=12, 'hj')
+tf.broo.troo(9,h= 89).plo.roo(g=2,'hj')
 
 vg1=19
 def fun4(k,t):
