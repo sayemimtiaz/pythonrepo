@@ -62,8 +62,8 @@ def main():
 
     x_train, y_train, x_test, y_test = load_data()
 
-    model = network()
-#     model=Input(name='inputs', shape=[28*28, ])
+#     model = network()
+    model=keras.Sequential()
     model.summary()
 
     model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
