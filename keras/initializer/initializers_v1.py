@@ -26,7 +26,7 @@ def load_data():
 
 # Network architecture
 def network():
-    inputs = Input(name='inputs', shape=[28*28, ])
+    inputs = Input(name='inputs', shape=[28*28, ])(inputs)
 
     layer = Dense(1024, name='FC1')(inputs)
     layer = BatchNormalization(name='BC1')(layer)
@@ -62,8 +62,8 @@ def main():
 
     x_train, y_train, x_test, y_test = load_data()
 
-    #model = network()
-    model=Input(name='inputs', shape=[28*28, ])
+    model = network()
+#     model=Input(name='inputs', shape=[28*28, ])
     model.summary()
 
     model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
