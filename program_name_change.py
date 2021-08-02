@@ -24,3 +24,13 @@ model=sequential()
 model.add(dense())
 model.add(simpleRNN())
 model.compile()
+
+from keras import models
+from keras.preprocessing.image import img_to_array
+from keras.applications import imagenet_utils
+
+def _pre_process(self, image):
+    image = image.resize(self.MODEL_INPUT_IMG_SIZE, resample=Image.NEAREST)
+    image = img_to_array(image)
+    image = np.expand_dims(image, axis=0)
+    return imagenet_utils.preprocess_input(image, mode=self.MODEL_MODE)
