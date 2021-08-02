@@ -18,10 +18,9 @@ QUALITIES = {
 }
 a=2
 
-from keras import dense,simpleRNN,artousConv2dTranspose
+from keras import layers.dense,layers.simpleRNN,layers.artousConv2dTranspose
 
 model=keras.layers.sequential()
 model.add(dense())
 model.add(simpleRNN())
-model.add(artousConv2dTranspose())
 model.compile()
