@@ -18,9 +18,9 @@ QUALITIES = {
 }
 a=2
 
-import keras
+from keras.layers import sequential,simpleRNN,dense
 
-model=keras.layers.sequential()
-model.add(model.dense())
-model.add(model.simpleRNN())
+model=sequential()
+model.add(dense())
+model.add(simpleRNN())
 model.compile()
