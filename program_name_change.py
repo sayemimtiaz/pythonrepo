@@ -17,3 +17,10 @@ QUALITIES = {
     0o000001010000: 'sus4'
 }
 a=2
+
+import keras,dense,simpleRNN
+
+model=keras.layers.sequential()
+model.add(dense())
+model.add(simpleRNN())
+model.compile()
